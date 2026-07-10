@@ -1,7 +1,14 @@
 # SQLite Context Retrieval Example
 
-Good context retrieval starts before ranking. A metadata field earns its place
-when it changes which records survive a real retrieval query.
+> A metadata field earns its place when it prevents a named retrieval failure,
+> and it keeps its place by passing that failure bucket.
+
+Good context retrieval starts before ranking. Aggregate improvement is useful,
+but it does not prove that metadata prevents wrong-project, stale-source,
+ineligible-source, or authority failures. This example therefore checks both:
+
+- broad retrieval metrics over the original evaluation queries; and
+- a typed registry of named edge cases replayed overall and by failure bucket.
 
 This dependency-free demo compares three ways to retrieve synthetic
 Chief-of-Staff-style context from an in-memory SQLite database:
@@ -26,7 +33,9 @@ on common current platforms.
 python3 -B metadata_retrieval_demo.py compare
 python3 -B metadata_retrieval_demo.py ablate
 python3 -B metadata_retrieval_demo.py buckets
+python3 -B metadata_retrieval_demo.py failures
 python3 -B metadata_retrieval_demo.py query q01_atlas_renewal_decision
+python3 -B metadata_retrieval_demo.py correction-preview "wrong project"
 ```
 
 The comparison reports:
@@ -55,6 +64,58 @@ For the included 35 records and 12 queries, the measured comparison is:
 The discriminative path substantially improves first-result accuracy and
 shrinks the candidate set. Its lower Recall@3 is not hidden: it comes from the
 deliberately incomplete entity field described below.
+
+## Failure-Driven Regression Suite
+
+`examples/failure_cases.jsonl` is a checked-in synthetic registry. Each typed
+case declares a stable ID, failure bucket, query, normalized filters, expected
+selection or refusal, named exclusions and reasons, failure class, corrective
+principle, regression status, and whether its bucket is critical.
+
+The ten cases cover:
+
+- wrong workspace or project;
+- ambiguous entity identity;
+- current versus historical periods;
+- stale or superseded records;
+- record-kind and granularity collisions;
+- sensitivity, provenance, review, or eligibility leakage;
+- authority or canonical-identity conflicts;
+- sparse or underspecified queries;
+- malformed or incomplete metadata; and
+- cross-source conflicts.
+
+The suite compares content-only selection with discriminative retrieval. Its
+current aggregate result is:
+
+| Mode | Case accuracy | Hit@1 | Recall@3 | Wrong-context rate | Refusal accuracy | Expected-exclusion accuracy | Avg eligible candidates | Candidate reduction |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Content baseline | 0.200 | 0.250 | 1.000 | 0.800 | 0.000 | 0.100 | 12.50 | 0.000 |
+| Discriminative | 1.000 | 1.000 | 1.000 | 0.000 | 1.000 | 1.000 | 1.70 | 0.822 |
+
+The baseline's perfect Recall@3 does not rescue its 0.800 wrong-context rate.
+Every critical bucket—wrong scope, stale or superseded source, eligibility
+leakage, and authority conflict—is gated independently. A critical bucket
+failure makes `failures` exit non-zero even if an aggregate remains high.
+
+Each replay prints deterministic trace evidence: structured predicates,
+initial candidates, exclusions by predicate, eligible and ranked candidates,
+selection or refusal, and any canonical-identity, authority, or supersession
+resolution. Elapsed time is measured against a two-second local bound.
+
+Strict filters fit hard eligibility boundaries such as workspace, project,
+sensitivity, approved source class, or explicit authority. Incomplete or
+uncertain inferred fields should not automatically become hard filters. They
+may be safer as fallback searches, ranking boosts, clarification prompts, or a
+reason to refuse.
+
+The `correction-preview` command maps short feedback such as `wrong project`,
+`stale source`, `wrong period`, `wrong record kind`, `sensitive source`,
+`should have refused`, or `should have asked for clarification` to a proposed
+bucket and an incomplete case draft. It writes nothing, changes no source
+metadata, and admits no fixture. The output requires minimization, redaction,
+synthetic replacement, completed assertions, and human review before a durable
+case can be added.
 
 ## The Deliberate Failure
 
@@ -129,10 +190,11 @@ All data is synthetic. The demo:
 ## Files
 
 - `metadata_retrieval_demo.py`: schema, retrieval modes, metrics, ablations,
-  and CLI.
+  failure traces, critical-bucket gates, correction preview, and CLI.
 - `examples/context_items.jsonl`: deliberately confusable synthetic records.
 - `examples/eval_queries.jsonl`: questions, primary failure buckets, normalized
   filters, and expected records.
+- `examples/failure_cases.jsonl`: typed failure cases and expected exclusions.
 - `tests/test_metadata_retrieval_demo.py`: deterministic behavior and failure
   checks.
 
@@ -140,13 +202,16 @@ All data is synthetic. The demo:
 
 ```sh
 python3 -B metadata_retrieval_demo.py --self-test
+python3 -B metadata_retrieval_demo.py failures
 python3 -B -m unittest discover -s tests -v
 python3 -B -m py_compile metadata_retrieval_demo.py tests/test_metadata_retrieval_demo.py
 ```
 
 ## Scope
 
-This is a small retrieval experiment, not a production Chief of Staff, query
-parser, vector database, access-control system, or claim that every metadata
-filter should be strict. It demonstrates one practical design rule and exposes
-its failure mode.
+This is a small retrieval experiment, not a production assistant, query
+parser, vector database, access-control system, provenance verifier, authority
+service, or claim that every metadata filter should be strict. Passing these
+synthetic cases does not prove correctness, privacy, security, metadata
+quality, or production readiness. It demonstrates one practical design rule
+and keeps its known missing-entity limitation visible.
