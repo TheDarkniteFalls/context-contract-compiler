@@ -25,6 +25,7 @@ on common current platforms.
 ```sh
 python3 -B metadata_retrieval_demo.py compare
 python3 -B metadata_retrieval_demo.py ablate
+python3 -B metadata_retrieval_demo.py buckets
 python3 -B metadata_retrieval_demo.py query q01_atlas_renewal_decision
 ```
 
@@ -39,6 +40,9 @@ The comparison reports:
 
 The ablation command removes one filter group at a time. This shows which
 fields shrink the candidate set and where incomplete metadata can hurt recall.
+The buckets command shows the same core retrieval measures for each recurring
+kind of failure, so a good overall average cannot hide one consistently weak
+category.
 
 For the included 35 records and 12 queries, the measured comparison is:
 
@@ -65,6 +69,48 @@ signals. The ablation makes this visible: removing the incomplete entity filter
 restores perfect retrieval on these fixtures, while increasing the average
 candidate set from 1.00 to 1.25.
 
+## Refine Metadata from Failure Buckets
+
+A useful metadata schema is rarely designed perfectly on the first attempt.
+It gets better when real retrieval mistakes are turned into repeatable tests.
+This example uses a simple refinement loop:
+
+1. **Capture** the wrong result, missed result, or unnecessarily large result
+   set.
+2. **Classify** the mistake into a failure bucket that describes what went
+   wrong.
+3. **Fixture** it as a small synthetic query with known correct records.
+4. **Refine** only the metadata or retrieval rule that should separate that
+   case.
+5. **Regress** the affected bucket and the full suite before keeping the
+   change.
+
+Each evaluation query has one primary `failure_bucket`. The included buckets
+are deliberately described in user-facing language:
+
+| Failure bucket | What it protects against |
+| --- | --- |
+| Wrong scope or entity | The right words appear in the wrong workspace, project, or entity. |
+| Wrong record type | A proposal, meeting, or task is mistaken for a decision or fact. |
+| Wrong time or stale version | An old record or out-of-period event outranks current truth. |
+| Wrong lifecycle state | Closed, draft, or completed work is returned instead of open or approved work. |
+| Conflicting provenance | A draft or discussion looks as authoritative as the requested source. |
+| Missing or inconsistent metadata | A useful filter removes the right record because its value is empty or normalized differently. |
+| Multiple correct results | A question needs a complete set, not just one top answer. |
+
+Run `python3 -B metadata_retrieval_demo.py buckets` to see Hit@1, Recall@3,
+MRR, average candidate-set size, and filter-induced false negatives for each
+category.
+
+### Avoid Overfitting the Buckets
+
+Failure fixtures are regression evidence, not proof that retrieval is solved.
+If every refinement is tuned only to the existing examples, the schema can
+memorize those examples without learning a reusable distinction. Add fresh or
+held-out synthetic cases over time, and keep a metadata change only when it
+improves the target bucket without creating unacceptable false negatives in
+another bucket or in the full suite.
+
 ## Retrieval Boundary
 
 Each evaluation query contains normalized `search_terms` and `filters`. This
@@ -85,8 +131,8 @@ All data is synthetic. The demo:
 - `metadata_retrieval_demo.py`: schema, retrieval modes, metrics, ablations,
   and CLI.
 - `examples/context_items.jsonl`: deliberately confusable synthetic records.
-- `examples/eval_queries.jsonl`: questions, normalized filters, and expected
-  records.
+- `examples/eval_queries.jsonl`: questions, primary failure buckets, normalized
+  filters, and expected records.
 - `tests/test_metadata_retrieval_demo.py`: deterministic behavior and failure
   checks.
 
