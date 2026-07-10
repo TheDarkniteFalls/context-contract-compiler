@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import unittest
+from contextlib import redirect_stdout
 
 import metadata_retrieval_demo as demo
 
@@ -84,6 +86,30 @@ class MetadataRetrievalDemoTests(unittest.TestCase):
         first = demo.compare_modes(self.connection, self.queries)
         second = demo.compare_modes(self.connection, self.queries)
         self.assertEqual(first, second)
+
+    def test_every_failure_bucket_has_at_least_one_case(self) -> None:
+        counts = demo.failure_bucket_counts(self.queries)
+
+        self.assertEqual(set(counts), set(demo.FAILURE_BUCKETS))
+        self.assertTrue(all(count > 0 for count in counts.values()))
+        self.assertEqual(sum(counts.values()), len(self.queries))
+
+    def test_failure_bucket_report_is_deterministic_and_user_friendly(self) -> None:
+        first_summary = demo.summarize_failure_buckets(self.connection, self.queries)
+        second_summary = demo.summarize_failure_buckets(self.connection, self.queries)
+        self.assertEqual(first_summary, second_summary)
+
+        first_output = io.StringIO()
+        second_output = io.StringIO()
+        with redirect_stdout(first_output):
+            demo.print_failure_buckets(self.connection, self.queries)
+        with redirect_stdout(second_output):
+            demo.print_failure_buckets(self.connection, self.queries)
+
+        self.assertEqual(first_output.getvalue(), second_output.getvalue())
+        self.assertIn("Wrong time or stale version", first_output.getvalue())
+        self.assertIn("Missing or inconsistent metadata", first_output.getvalue())
+        self.assertIn("Filter FN", first_output.getvalue())
 
 
 if __name__ == "__main__":

@@ -36,6 +36,36 @@ FILTER_GROUPS = {
     "validity": {"current_only", "as_of"},
     "source_kind": {"source_kind"},
 }
+FAILURE_BUCKETS = {
+    "scope_collision": (
+        "Wrong scope or entity",
+        "Similar wording points to the wrong workspace, project, or entity.",
+    ),
+    "record_kind_collision": (
+        "Wrong record type",
+        "A proposal, meeting, or task is mistaken for the requested decision or fact.",
+    ),
+    "stale_or_superseded": (
+        "Wrong time or stale version",
+        "An older record or a record outside the requested period outranks current truth.",
+    ),
+    "lifecycle_collision": (
+        "Wrong lifecycle state",
+        "Closed, draft, or completed work is returned when the user asked for open or approved work.",
+    ),
+    "provenance_conflict": (
+        "Conflicting provenance",
+        "A draft or discussion looks like an authoritative decision from the requested source.",
+    ),
+    "missing_or_misnormalized_metadata": (
+        "Missing or inconsistent metadata",
+        "The right record is removed because a useful field is empty or normalized differently.",
+    ),
+    "multi_result_retrieval": (
+        "Multiple correct results",
+        "The question needs a complete set of relevant records instead of one top answer.",
+    ),
+}
 RECORD_FIELDS = {
     "id",
     "title",
@@ -53,7 +83,14 @@ RECORD_FIELDS = {
     "source_id",
     "broad_tags",
 }
-QUERY_FIELDS = {"id", "question", "search_terms", "filters", "expected_ids"}
+QUERY_FIELDS = {
+    "id",
+    "question",
+    "search_terms",
+    "filters",
+    "expected_ids",
+    "failure_bucket",
+}
 ALLOWED_FILTER_FIELDS = set(EXACT_FILTER_FIELDS) | {
     "occurred_from",
     "occurred_to",
@@ -154,6 +191,11 @@ def validate_fixtures(records: Sequence[dict], queries: Sequence[dict]) -> None:
         query_ids.add(query_id)
         if not isinstance(query["question"], str) or not query["question"]:
             raise ValueError(f"query {query_id} needs a question")
+        failure_bucket = query["failure_bucket"]
+        if not isinstance(failure_bucket, str) or failure_bucket not in FAILURE_BUCKETS:
+            raise ValueError(
+                f"query {query_id} has unknown failure_bucket: {failure_bucket!r}"
+            )
         terms = query["search_terms"]
         if not isinstance(terms, list) or not terms or not all(isinstance(term, str) and term for term in terms):
             raise ValueError(f"query {query_id} needs non-empty string search_terms")
@@ -389,6 +431,28 @@ def run_ablations(
     return summaries
 
 
+def failure_bucket_counts(queries: Sequence[dict]) -> dict[str, int]:
+    counts = {bucket: 0 for bucket in FAILURE_BUCKETS}
+    for query in queries:
+        counts[query["failure_bucket"]] += 1
+    return counts
+
+
+def summarize_failure_buckets(
+    connection: sqlite3.Connection, queries: Sequence[dict]
+) -> dict[str, MetricSummary]:
+    summaries: dict[str, MetricSummary] = {}
+    for bucket in FAILURE_BUCKETS:
+        bucket_queries = [query for query in queries if query["failure_bucket"] == bucket]
+        if bucket_queries:
+            summaries[bucket] = evaluate(
+                connection,
+                bucket_queries,
+                "discriminative",
+            )[0]
+    return summaries
+
+
 def _print_metric_table(rows: Iterable[tuple[str, MetricSummary]]) -> None:
     print(
         f"{'Mode':<18} {'Hit@1':>7} {'Recall@3':>9} {'MRR':>7} "
@@ -418,6 +482,32 @@ def print_ablations(connection: sqlite3.Connection, queries: Sequence[dict]) -> 
     rows.extend((f"without {group}", summaries[group]) for group in FILTER_GROUPS)
     _print_metric_table(rows)
     print("\nA field can shrink the candidate set yet still hurt recall when its values are incomplete.")
+
+
+def print_failure_buckets(
+    connection: sqlite3.Connection, queries: Sequence[dict]
+) -> None:
+    summaries = summarize_failure_buckets(connection, queries)
+    print("Discriminative retrieval results by failure bucket")
+    print("Each row shows how the current metadata handles one recurring kind of mistake.\n")
+    print(
+        f"{'Failure bucket':<34} {'Cases':>5} {'Hit@1':>7} {'Recall@3':>9} "
+        f"{'MRR':>7} {'Avg candidates':>15} {'Filter FN':>10}"
+    )
+    print("-" * 96)
+    for bucket, summary in summaries.items():
+        label = FAILURE_BUCKETS[bucket][0]
+        print(
+            f"{label:<34} {summary.query_count:>5} {summary.hit_at_1:>7.3f} "
+            f"{summary.recall_at_3:>9.3f} {summary.mrr:>7.3f} "
+            f"{summary.mean_candidate_set_size:>15.2f} "
+            f"{summary.filter_false_negatives:>10}"
+        )
+
+    print("\nWhat the buckets mean:")
+    for bucket in summaries:
+        label, description = FAILURE_BUCKETS[bucket]
+        print(f"- {label}: {description}")
 
 
 def print_query(
@@ -452,6 +542,11 @@ def run_self_test(
     assert discriminative.recall_at_3 >= content.recall_at_3
     assert discriminative.mean_candidate_set_size < content.mean_candidate_set_size
     assert "q12_missing_entity_metadata" in discriminative.filter_false_negative_queries
+    counts = failure_bucket_counts(queries)
+    assert all(count > 0 for count in counts.values())
+    first_bucket_summary = summarize_failure_buckets(connection, queries)
+    second_bucket_summary = summarize_failure_buckets(connection, queries)
+    assert first_bucket_summary == second_bucket_summary
     first = run_query(connection, queries[0], "discriminative")
     second = run_query(connection, queries[0], "discriminative")
     assert first == second
@@ -461,6 +556,8 @@ def run_self_test(
     print("PASS discriminative_retrieval_improves_hit_at_1")
     print("PASS discriminative_filters_shrink_candidate_sets")
     print("PASS filter_induced_false_negative_is_visible")
+    print("PASS failure_bucket_coverage")
+    print("PASS deterministic_bucket_reporting")
     print("PASS deterministic_repeat")
 
 
@@ -472,6 +569,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("compare", help="Compare all three retrieval modes")
     subparsers.add_parser("ablate", help="Remove one structured filter group at a time")
+    subparsers.add_parser(
+        "buckets",
+        help="Show discriminative retrieval results for each user-friendly failure category",
+    )
     query_parser = subparsers.add_parser("query", help="Inspect one evaluation query")
     query_parser.add_argument("query_id")
     query_parser.add_argument("--mode", choices=MODES, default="discriminative")
@@ -489,6 +590,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             run_self_test(connection, records, queries)
         elif args.command == "ablate":
             print_ablations(connection, queries)
+        elif args.command == "buckets":
+            print_failure_buckets(connection, queries)
         elif args.command == "query":
             query = next((item for item in queries if item["id"] == args.query_id), None)
             if query is None:
