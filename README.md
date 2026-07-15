@@ -1,5 +1,7 @@
 # SQLite Context Retrieval Example
 
+[![checks](https://github.com/TheDarkniteFalls/sqlite-context-retrieval-example/actions/workflows/checks.yml/badge.svg)](https://github.com/TheDarkniteFalls/sqlite-context-retrieval-example/actions/workflows/checks.yml)
+
 > A metadata field earns its place when it prevents a named retrieval failure,
 > and it keeps its place by passing that failure bucket.
 
