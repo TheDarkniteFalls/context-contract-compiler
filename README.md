@@ -2,6 +2,18 @@
 
 [![checks](https://github.com/TheDarkniteFalls/sqlite-context-retrieval-example/actions/workflows/checks.yml/badge.svg)](https://github.com/TheDarkniteFalls/sqlite-context-retrieval-example/actions/workflows/checks.yml)
 
+<!-- toolkit-trust-card:start -->
+> **Public contract:** Experimental pattern · about 15 min · Python 3 · no model · no network
+>
+> **Operation:** Read-only check; examples may use temporary files
+>
+> **A pass establishes:** The synthetic failure registry selects or refuses correctly and keeps critical buckets independently green.
+>
+> **It does not establish:** The fixtures are synthetic and natural-language-to-filter translation is outside the evaluated boundary.
+>
+> **First check:** `python3 -B metadata_retrieval_demo.py failures`
+<!-- toolkit-trust-card:end -->
+
 > A metadata field earns its place when it prevents a named retrieval failure,
 > and it keeps its place by passing that failure bucket.
 
