@@ -1,73 +1,228 @@
-# SQLite Context Retrieval Example
+# ContextGate — Deterministic Context Contract Compiler
 
 [![checks](https://github.com/TheDarkniteFalls/sqlite-context-retrieval-example/actions/workflows/checks.yml/badge.svg)](https://github.com/TheDarkniteFalls/sqlite-context-retrieval-example/actions/workflows/checks.yml)
 
 <!-- toolkit-trust-card:start -->
-> **Public contract:** Experimental pattern · about 15 min · Python 3 · no model · no network
+> **Public contract:** Experimental pattern · about 10 min · Python 3 · no model · no network
 >
 > **Operation:** Read-only check; examples may use temporary files
 >
-> **A pass establishes:** The synthetic failure registry selects or refuses correctly and keeps critical buckets independently green.
+> **A pass establishes:** The synthetic compiler protects required records before ranking, explains every inclusion and exclusion, fails closed on invalid obligations, and rejects stale receipts deterministically.
 >
-> **It does not establish:** The fixtures are synthetic and natural-language-to-filter translation is outside the evaluated boundary.
+> **It does not establish:** Structured metadata and changes are supplied; the project does not discover runtime changes, authorize actions, verify truth, or prove downstream model safety.
 >
-> **First check:** `python3 -B metadata_retrieval_demo.py failures`
+> **First check:** `python3 -B contextgate.py check`
 <!-- toolkit-trust-card:end -->
 
-> A metadata field earns its place when it prevents a named retrieval failure,
-> and it keeps its place by passing that failure bucket.
+> ContextGate compiles the smallest context an AI is allowed to see, proves
+> every inclusion and exclusion, and detects when that context must be
+> recompiled.
 
-Good context retrieval starts before ranking. Aggregate improvement is useful,
-but it does not prove that metadata prevents wrong-project, stale-source,
-ineligible-source, or authority failures. This example therefore checks both:
+Semantic retrieval can return the most relevant record and still be wrong for
+the task. A close match may belong to another project, come from the future,
+have been superseded, remain unreviewed, lack provenance, or displace an older
+obligation that must not be omitted.
 
-- broad retrieval metrics over the original evaluation queries; and
-- a typed registry of named edge cases replayed overall and by failure bucket.
+ContextGate is a dependency-free local Context Debugger for that boundary. It
+compares a deliberately naïve relevance-only packet with a legality-first
+packet under the same task and token budget. Every supplied record receives a
+deterministic decision, and an illegal, unsupported, absent, or over-budget
+required record stops compilation instead of producing a plausible-looking
+partial packet. A deterministic receipt plus contract and packet fingerprints
+also makes a declared material change visible after compilation, so an old
+packet cannot silently continue.
 
-This dependency-free demo compares three ways to retrieve synthetic
-Chief-of-Staff-style context from an in-memory SQLite database:
+All fixtures are synthetic. Runtime requires no model, API key, package
+install, network access, or external data.
 
-1. **Content only:** rank titles and bodies with FTS5.
-2. **Broad metadata:** add generic tags such as `work`, `decision`, and `open`
-   to FTS5.
-3. **Discriminative metadata:** apply query-aligned structured filters, then
-   rank the surviving content with FTS5.
+![ContextGate refusing continuation from a stale receipt](docs/assets/contextgate-stale-receipt.jpg)
 
-The point is not that more metadata is always better. The point is that
-accurate fields such as project, entity, record kind, status, temporal
-validity, and provenance can separate records whose wording looks equally
-relevant.
+*Agent Fire Drill freezes a valid receipt, then refuses continuation after a
+declared late correction until the context is recompiled.*
 
-## Run It
+## Try It in 90 Seconds
 
-Requires Python 3 with SQLite FTS5, which is included in standard Python builds
-on common current platforms.
+Requires Python 3 with SQLite FTS5. From the repository root:
 
 ```sh
-python3 -B metadata_retrieval_demo.py compare
-python3 -B metadata_retrieval_demo.py ablate
-python3 -B metadata_retrieval_demo.py buckets
-python3 -B metadata_retrieval_demo.py failures
-python3 -B metadata_retrieval_demo.py query q01_atlas_renewal_decision
-python3 -B metadata_retrieval_demo.py correction-preview "wrong project"
+python3 -B contextgate.py serve --open
 ```
 
-The comparison reports:
+If the browser does not open automatically, visit
+`http://localhost:8765/`. The checked-in retry-policy scenario compiles on
+load.
 
-- `Hit@1`: queries whose first result is relevant.
-- `Recall@3`: expected records found in the first three results.
-- `MRR`: mean reciprocal rank of the first relevant result.
-- `Avg candidates`: matching records before the top-three cutoff.
-- `Filter FN`: relevant records visible to content search but removed by
-  structured filters.
+1. Compare **Naïve relevance** with **ContextGate packet**.
+2. Find required record `ADR-0234`, which naïve ranking misses.
+3. Read the reason code and boundary fact for each of the 13 candidates.
+4. In **Agent Fire Drill**, select **Inject late correction** and observe
+   `STALE — RECOMPILE REQUIRED`.
+5. Select **Recompile current context** and observe a new current receipt with
+   `RUN-0880` promoted to required context.
+6. Turn on **Remove required provenance**, then select **Compile context**.
+7. Observe `REQUIRED_MISSING_PROVENANCE`, a red fail-closed state, and no
+   emitted packet.
+8. Restore provenance, compile again, and use **Copy packet**.
 
-The ablation command removes one filter group at a time. This shows which
-fields shrink the candidate set and where incomplete metadata can hurt recall.
-The buckets command shows the same core retrieval measures for each recurring
-kind of failure, so a good overall average cannot hide one consistently weak
-category.
+The default run is deliberately sharp:
 
-For the included 35 records and 12 queries, the measured comparison is:
+| Result | Selected | Tokens | What happened |
+| --- | ---: | ---: | --- |
+| Naïve relevance | 5 | 90 / 96 | All 5 are illegal; required `ADR-0234` is missed |
+| ContextGate | 4 | 74 / 96 | Required obligation protected; 9 candidates excluded with reasons |
+
+Run the entire deterministic check stack with one command:
+
+```sh
+python3 -B contextgate.py check
+```
+
+See [TESTING.md](TESTING.md) for installation checks, the manual acceptance
+route, CLI/API use, and the seven-control matrix.
+
+## The Product Boundary
+
+Retrieval asks which records look similar. ContextGate first compiles a task
+contract, then permits ranking only inside the legal candidate set:
+
+```text
+structured records + task contract
+              |
+              v
+scope -> identity -> time -> supersession -> source/sensitivity
+              -> authority/review -> provenance -> required records
+              |
+              v
+       FTS5 rank legal optionals
+              |
+              v
+       prune optionals to budget
+              |
+              v
+      packet + receipt/fingerprints
+              |
+              v
+declared late change + current contract/records
+              |
+              v
+   continue / recompile_required / block
+```
+
+The contract declares:
+
+- task/query and as-of date;
+- project and scope;
+- allowed source and authority classes;
+- required stable record IDs;
+- forbidden lifecycle and sensitivity states; and
+- token budget.
+
+Required records are resolved before relevance ranking. If a required record
+is absent, illegal, unsupported by provenance, or too large for the contract,
+ContextGate emits no packet. Optional records are ranked only after legality
+checks and pruned last.
+
+## Context Debugger
+
+The responsive interface keeps the complete decision in one view:
+
+- **Contract:** editable task boundaries and seven adversarial controls.
+- **Compare:** naïve and legality-first packets under the same budget.
+- **Trace:** stable ID, decision/reason code, boundary fact, token contribution,
+  and required status for every candidate.
+- **Agent Fire Drill:** freeze a receipt, declare one late user correction,
+  reject attempted continuation as stale, then recompile to a new receipt.
+- **Audit strip:** selected/excluded counts, exact budget accounting, receipt
+  ID, and the governing principle.
+
+The checked-in poison controls cover a highly similar future reveal,
+superseded decision, generated draft, rejected writer-only plan, ambiguous
+identity, missing required provenance, and required record that cannot fit the
+budget. Desktop uses a three-rail debugger; smaller screens switch to Contract,
+Compare, and Trace tabs.
+
+## CLI and Local API
+
+Compile the default scenario in the terminal:
+
+```sh
+python3 -B contextgate.py compile
+python3 -B contextgate.py compile --json
+```
+
+Exercise the two fail-closed paths directly. Exit code `2` is expected because
+no packet is emitted:
+
+```sh
+python3 -B contextgate.py compile --remove-required-provenance
+python3 -B contextgate.py compile --tight-token-budget
+```
+
+The local server exposes:
+
+- `GET /api/health`
+- `GET /api/scenario`
+- `GET /api/compile`
+- `POST /api/compile`
+- `POST /api/fire-drill`
+
+`POST /api/compile` input must contain exactly `contract` and `controls`.
+Contract, record, and control schemas reject unknown fields. The fire-drill
+request contains a supplied prior receipt, declared change, current contract,
+and controls. The server reloads the current fixture records and stores no
+runtime state. It binds to localhost by default, serves only the static
+debugger, and applies a restrictive Content Security Policy.
+
+## Decision Model
+
+Each active candidate gets exactly one trace row. Representative codes include:
+
+| Outcome | Example reason codes |
+| --- | --- |
+| Included | `SELECTED_REQUIRED`, `SELECTED_RANKED` |
+| Boundary exclusion | `EXCLUDE_PROJECT`, `EXCLUDE_SCOPE`, `EXCLUDE_IDENTITY`, `EXCLUDE_FUTURE` |
+| Evidence exclusion | `EXCLUDE_SOURCE`, `EXCLUDE_AUTHORITY`, `EXCLUDE_REVIEW`, `EXCLUDE_PROVENANCE` |
+| Lifecycle/budget exclusion | `EXCLUDE_SUPERSEDED`, `EXCLUDE_LIFECYCLE`, `EXCLUDE_SENSITIVITY`, `EXCLUDE_BUDGET` |
+| Required fail-closed | `REQUIRED_NOT_FOUND`, `REQUIRED_MISSING_PROVENANCE`, `REQUIRED_OVER_BUDGET` |
+| Post-compile staleness | `RECEIPT_CURRENT`, `STALE_CONTRACT_FINGERPRINT`, `STALE_PACKET_FINGERPRINT`, `LATE_USER_INPUT_NOT_APPLIED` |
+
+Receipts are deterministic for the normalized contract and complete trace.
+Contract and packet fingerprints expose material changes without changing the
+receipt's original selection proof. Packet text carries record IDs, source,
+authority, provenance, and token accounting so the selection boundary remains
+visible after copying.
+
+## What the Proof Establishes
+
+A passing receipt establishes that, for the supplied structured records and
+declared contract:
+
+- every active candidate received one deterministic decision;
+- every selected record passed the implemented legality gates;
+- required records were protected before optional ranking;
+- selected token contributions fit the declared budget; and
+- every exclusion or fail-closed result carries a machine-readable reason and
+  boundary fact;
+- an unchanged supplied receipt may continue; and
+- a supplied old receipt cannot continue after the declared late correction
+  changes its contract or packet fingerprint.
+
+It does **not** establish that record contents are true, metadata is honest or
+complete, the declared contract is the right policy, access control happened
+upstream, a downstream model used the packet correctly, or an answer is safe,
+private, or correct. ContextGate is a context-selection contract compiler, not
+an authorization service, truth oracle, action gate, or runtime monitor. The
+staleness decision compares supplied evidence; it does not observe an agent or
+discover changes by itself.
+
+## Retrieval Foundation
+
+ContextGate reuses the repository's FTS5 expression and synthetic
+failure-driven retrieval harness instead of adding a competing retrieval
+engine. The foundation compares content-only, broad-metadata, and
+discriminative-metadata retrieval across 35 synthetic records and 12 queries.
+
+Its measured retrieval comparison remains:
 
 | Mode | Hit@1 | Recall@3 | MRR | Average candidates | Filter false negatives |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -75,157 +230,44 @@ For the included 35 records and 12 queries, the measured comparison is:
 | Broad metadata | 0.667 | 1.000 | 0.833 | 13.08 | 0 |
 | Discriminative metadata | 0.917 | 0.917 | 0.917 | 1.00 | 1 |
 
-The discriminative path substantially improves first-result accuracy and
-shrinks the candidate set. Its lower Recall@3 is not hidden: it comes from the
-deliberately incomplete entity field described below.
+The known false negative is deliberate: one synthetic record is missing a
+normalized entity field. The failure demonstrates why incomplete inferred
+metadata should not automatically become a hard eligibility rule.
 
-## Failure-Driven Regression Suite
+Foundation commands remain available:
 
-`examples/failure_cases.jsonl` is a checked-in synthetic registry. Each typed
-case declares a stable ID, failure bucket, query, normalized filters, expected
-selection or refusal, named exclusions and reasons, failure class, corrective
-principle, regression status, and whether its bucket is critical.
-
-The ten cases cover:
-
-- wrong workspace or project;
-- ambiguous entity identity;
-- current versus historical periods;
-- stale or superseded records;
-- record-kind and granularity collisions;
-- sensitivity, provenance, review, or eligibility leakage;
-- authority or canonical-identity conflicts;
-- sparse or underspecified queries;
-- malformed or incomplete metadata; and
-- cross-source conflicts.
-
-The suite compares content-only selection with discriminative retrieval. Its
-current aggregate result is:
-
-| Mode | Case accuracy | Hit@1 | Recall@3 | Wrong-context rate | Refusal accuracy | Expected-exclusion accuracy | Avg eligible candidates | Candidate reduction |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Content baseline | 0.200 | 0.250 | 1.000 | 0.800 | 0.000 | 0.100 | 12.50 | 0.000 |
-| Discriminative | 1.000 | 1.000 | 1.000 | 0.000 | 1.000 | 1.000 | 1.70 | 0.822 |
-
-The baseline's perfect Recall@3 does not rescue its 0.800 wrong-context rate.
-Every critical bucket—wrong scope, stale or superseded source, eligibility
-leakage, and authority conflict—is gated independently. A critical bucket
-failure makes `failures` exit non-zero even if an aggregate remains high.
-
-Each replay prints deterministic trace evidence: structured predicates,
-initial candidates, exclusions by predicate, eligible and ranked candidates,
-selection or refusal, and any canonical-identity, authority, or supersession
-resolution. Elapsed time is measured against a two-second local bound.
-
-Strict filters fit hard eligibility boundaries such as workspace, project,
-sensitivity, approved source class, or explicit authority. Incomplete or
-uncertain inferred fields should not automatically become hard filters. They
-may be safer as fallback searches, ranking boosts, clarification prompts, or a
-reason to refuse.
-
-The `correction-preview` command maps short feedback such as `wrong project`,
-`stale source`, `wrong period`, `wrong record kind`, `sensitive source`,
-`should have refused`, or `should have asked for clarification` to a proposed
-bucket and an incomplete case draft. It writes nothing, changes no source
-metadata, and admits no fixture. The output requires minimization, redaction,
-synthetic replacement, completed assertions, and human review before a durable
-case can be added.
-
-## The Deliberate Failure
-
-One synthetic Cedar security record mentions the fictional stakeholder Morgan
-Lee in its text but is missing its normalized `entity` value. Content search
-can find it. A strict `entity=morgan_lee` filter removes it.
-
-That failure is intentional: discriminative metadata helps only when it is
-complete and reliable. Explicit security or workspace boundaries should remain
-hard filters; uncertain inferred fields are safer as ranking boosts or fallback
-signals. The ablation makes this visible: removing the incomplete entity filter
-restores perfect retrieval on these fixtures, while increasing the average
-candidate set from 1.00 to 1.25.
-
-## Refine Metadata from Failure Buckets
-
-A useful metadata schema is rarely designed perfectly on the first attempt.
-It gets better when real retrieval mistakes are turned into repeatable tests.
-This example uses a simple refinement loop:
-
-1. **Capture** the wrong result, missed result, or unnecessarily large result
-   set.
-2. **Classify** the mistake into a failure bucket that describes what went
-   wrong.
-3. **Fixture** it as a small synthetic query with known correct records.
-4. **Refine** only the metadata or retrieval rule that should separate that
-   case.
-5. **Regress** the affected bucket and the full suite before keeping the
-   change.
-
-Each evaluation query has one primary `failure_bucket`. The included buckets
-are deliberately described in user-facing language:
-
-| Failure bucket | What it protects against |
-| --- | --- |
-| Wrong scope or entity | The right words appear in the wrong workspace, project, or entity. |
-| Wrong record type | A proposal, meeting, or task is mistaken for a decision or fact. |
-| Wrong time or stale version | An old record or out-of-period event outranks current truth. |
-| Wrong lifecycle state | Closed, draft, or completed work is returned instead of open or approved work. |
-| Conflicting provenance | A draft or discussion looks as authoritative as the requested source. |
-| Missing or inconsistent metadata | A useful filter removes the right record because its value is empty or normalized differently. |
-| Multiple correct results | A question needs a complete set, not just one top answer. |
-
-Run `python3 -B metadata_retrieval_demo.py buckets` to see Hit@1, Recall@3,
-MRR, average candidate-set size, and filter-induced false negatives for each
-category.
-
-### Avoid Overfitting the Buckets
-
-Failure fixtures are regression evidence, not proof that retrieval is solved.
-If every refinement is tuned only to the existing examples, the schema can
-memorize those examples without learning a reusable distinction. Add fresh or
-held-out synthetic cases over time, and keep a metadata change only when it
-improves the target bucket without creating unacceptable false negatives in
-another bucket or in the full suite.
-
-## Retrieval Boundary
-
-Each evaluation query contains normalized `search_terms` and `filters`. This
-keeps the benchmark deterministic and isolates retrieval behavior. Translating
-natural language into those filters is a separate system with its own accuracy
-and fallback requirements.
-
-All data is synthetic. The demo:
-
-- uses Python's standard library only;
-- creates the database in memory;
-- makes no model or network calls;
-- writes no runtime state; and
-- contains no real assistant, employee, customer, or connector data.
+```sh
+python3 -B metadata_retrieval_demo.py compare
+python3 -B metadata_retrieval_demo.py ablate
+python3 -B metadata_retrieval_demo.py buckets
+python3 -B metadata_retrieval_demo.py failures
+python3 -B metadata_retrieval_demo.py correction-preview "wrong project"
+```
 
 ## Files
 
-- `metadata_retrieval_demo.py`: schema, retrieval modes, metrics, ablations,
-  failure traces, critical-bucket gates, correction preview, and CLI.
-- `examples/context_items.jsonl`: deliberately confusable synthetic records.
-- `examples/eval_queries.jsonl`: questions, primary failure buckets, normalized
-  filters, and expected records.
-- `examples/failure_cases.jsonl`: typed failure cases and expected exclusions.
-- `tests/test_metadata_retrieval_demo.py`: deterministic behavior and failure
-  checks.
+- `contextgate.py`: contract validation, legality-first compiler, reason codes,
+  packet/receipt/fingerprint generation, stateless staleness decisions, CLI,
+  local API/server, self-test, and full check.
+- `web/`: responsive static Context Debugger.
+- `examples/contextgate_records.jsonl`: 13 neutral, deliberately confusable
+  software-project records.
+- `examples/contextgate_scenario.json`: default contract, poison controls, and
+  one synthetic late-correction drill.
+- `tests/test_contextgate.py`: compiler, fail-closed, staleness, UI contract,
+  and HTTP regressions.
+- `metadata_retrieval_demo.py`, `examples/context_items.jsonl`,
+  `examples/eval_queries.jsonl`, `examples/failure_cases.jsonl`, and
+  `tests/test_metadata_retrieval_demo.py`: retrieval foundation.
 
-## Quality Checks
+## Limits and Status
 
-```sh
-python3 -B metadata_retrieval_demo.py --self-test
-python3 -B metadata_retrieval_demo.py failures
-python3 -B -m unittest discover -s tests -v
-python3 -B -m py_compile metadata_retrieval_demo.py tests/test_metadata_retrieval_demo.py
-```
+ContextGate is a local, single-user developer tool and synthetic reference
+implementation—not a production policy engine, access-control layer, vector
+database, natural-language policy parser, metadata verifier, or hosted
+service. It does not observe a real agent runtime or provide action
+authorization. Token counts are declared fixture costs rather than tokenizer
+output. The demo does not ingest external data or execute a downstream model.
 
-## Scope
-
-This is a small retrieval experiment, not a production assistant, query
-parser, vector database, access-control system, provenance verifier, authority
-service, or claim that every metadata filter should be strict. Passing these
-synthetic cases does not prove correctness, privacy, security, metadata
-quality, or production readiness. It demonstrates one practical design rule
-and keeps its known missing-entity limitation visible.
+The repository is MIT licensed; see [LICENSE](LICENSE). Security and public-data
+boundaries are in [SECURITY.md](SECURITY.md).
