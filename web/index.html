@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="Context Contract Compiler compiles task-specific context after enforcing declared boundaries."
+    >
+    <title>Context Contract Compiler · Context Debugger</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="Context Contract Compiler home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i></span>
+        <span>Context Contract Compiler</span>
+      </a>
+      <p class="header-subtitle">Compile only the context this task is allowed to see.</p>
+      <div class="header-meta">
+        <a href="#principle">How it works</a>
+        <span class="offline-label">Synthetic · Offline</span>
+        <span class="header-status is-loading" id="header-status" role="status">
+          <span class="status-symbol" aria-hidden="true"></span>
+          <span id="header-status-label">COMPILING</span>
+        </span>
+      </div>
+    </header>
+
+    <p class="mobile-subtitle">Compile only the context this task is allowed to see.</p>
+    <nav class="mobile-tabs" aria-label="Debugger panels">
+      <button type="button" data-tab="contract">Contract</button>
+      <button type="button" class="is-active" data-tab="compare">Compare</button>
+      <button type="button" data-tab="trace">Trace</button>
+    </nav>
+
+    <main class="app-grid">
+      <aside class="contract-panel mobile-pane" data-pane="contract" aria-labelledby="contract-title">
+        <div class="panel-heading">
+          <h1 id="contract-title">Task contract</h1>
+        </div>
+
+        <form id="contract-form">
+          <label class="field field-task">
+            <span>Task</span>
+            <textarea id="task" name="task" rows="2" required></textarea>
+          </label>
+
+          <div class="field-pair">
+            <label class="field">
+              <span>As of</span>
+              <input id="as-of" name="as_of" type="date" required>
+            </label>
+            <label class="field">
+              <span>Token budget</span>
+              <div class="number-field">
+                <input id="token-budget" name="token_budget" type="number" min="1" max="4096" required>
+                <span>tokens</span>
+              </div>
+            </label>
+          </div>
+
+          <div class="field-pair">
+            <label class="field">
+              <span>Project</span>
+              <input id="project" name="project" type="text" required>
+            </label>
+            <label class="field">
+              <span>Scope</span>
+              <input id="scope" name="scope" type="text" required>
+            </label>
+          </div>
+
+          <fieldset class="choice-group">
+            <legend>Allowed sources</legend>
+            <div class="choice-grid" id="source-options"></div>
+          </fieldset>
+
+          <fieldset class="choice-group">
+            <legend>Allowed authority</legend>
+            <div class="choice-grid" id="authority-options"></div>
+          </fieldset>
+
+          <fieldset class="choice-group">
+            <legend>Required records</legend>
+            <div class="choice-grid required-grid" id="required-options"></div>
+          </fieldset>
+
+          <fieldset class="choice-group">
+            <legend>Forbidden states</legend>
+            <div class="choice-grid" id="forbidden-options"></div>
+          </fieldset>
+
+          <details class="adversarial" open>
+            <summary>Adversarial controls</summary>
+            <div id="control-options" class="switch-list"></div>
+          </details>
+
+          <p class="form-error" id="form-error" role="alert" hidden></p>
+          <button class="primary-button compile-button" id="compile-button" type="submit">
+            Compile context
+          </button>
+        </form>
+      </aside>
+
+      <section class="compare-panel mobile-pane is-mobile-active" data-pane="compare" aria-labelledby="compare-title">
+        <div class="compare-heading">
+          <div>
+            <h1 id="compare-title">Same task. Same budget.</h1>
+          </div>
+          <code id="receipt-id">receipt pending</code>
+        </div>
+
+        <section class="fire-drill" id="fire-drill" aria-labelledby="fire-drill-title">
+          <div class="drill-copy">
+            <p class="drill-eyebrow">Agent Fire Drill · Context staleness mode</p>
+            <h2 id="fire-drill-title">Receipt pending</h2>
+            <p id="fire-drill-fact">Compile a packet to freeze its proof.</p>
+          </div>
+          <ol class="drill-steps" aria-label="Fire drill progress">
+            <li data-drill-step="receipt"><span>1</span>Receipt</li>
+            <li data-drill-step="change"><span>2</span>Correction</li>
+            <li data-drill-step="recompile"><span>3</span>Recompile</li>
+          </ol>
+          <div class="drill-proof">
+            <span>Frozen <code id="fire-drill-frozen">—</code></span>
+            <span>Current <code id="fire-drill-current">—</code></span>
+            <code class="drill-reason" id="fire-drill-reason">WAITING_FOR_RECEIPT</code>
+          </div>
+          <button class="drill-button" id="fire-drill-button" type="button" disabled>
+            Inject late correction
+          </button>
+        </section>
+
+        <div class="compare-grid">
+          <section class="packet-column naive-column" aria-labelledby="naive-title">
+            <header class="packet-heading">
+              <div>
+                <h2 id="naive-title">Naïve relevance</h2>
+                <p class="danger-text">Plausible, but illegal</p>
+              </div>
+              <span class="column-count" id="naive-count">—</span>
+            </header>
+            <div class="record-list" id="naive-records" aria-live="polite"></div>
+            <div class="packet-summary is-danger" id="naive-summary"></div>
+          </section>
+
+          <section class="packet-column gate-column" aria-labelledby="gate-title">
+            <header class="packet-heading">
+              <div>
+                <h2 id="gate-title">Context Contract Compiler packet</h2>
+                <p class="success-text" id="gate-caption">Legal and complete</p>
+              </div>
+              <span class="column-count" id="gate-count">—</span>
+            </header>
+            <div class="record-list" id="gate-records" aria-live="polite"></div>
+            <div class="packet-summary is-success" id="gate-summary"></div>
+            <button class="primary-button copy-button" id="copy-button" type="button" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="8" y="8" width="11" height="11" rx="1"></rect>
+                <path d="M16 8V5H5v11h3"></path>
+              </svg>
+              <span>Copy packet</span>
+            </button>
+            <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
+          </section>
+        </div>
+
+        <section class="mobile-trace-preview" aria-labelledby="mobile-trace-title">
+          <div class="mobile-trace-heading">
+            <h2 id="mobile-trace-title">Decision trace</h2>
+            <button type="button" id="view-all-decisions">View all decisions</button>
+          </div>
+          <div id="mobile-trace-rows"></div>
+        </section>
+      </section>
+
+      <aside class="trace-panel mobile-pane" data-pane="trace" aria-labelledby="trace-title">
+        <header class="trace-heading">
+          <div>
+            <h1 id="trace-title">Decision trace</h1>
+            <p id="trace-caption">Every supplied candidate gets one decision.</p>
+          </div>
+          <span id="trace-count">—</span>
+        </header>
+        <div class="trace-columns" aria-hidden="true">
+          <span>Record</span>
+          <span>Decision / reason</span>
+          <span>Tokens</span>
+        </div>
+        <div class="trace-list" id="trace-list" aria-live="polite"></div>
+      </aside>
+
+      <section class="audit-strip" id="principle" aria-label="Compilation audit summary">
+        <div class="audit-item">
+          <span class="audit-icon token-icon" aria-hidden="true"></span>
+          <div><strong id="audit-tokens">—</strong><span>budget accounting</span></div>
+        </div>
+        <div class="audit-item">
+          <span class="audit-icon selected-icon" aria-hidden="true"></span>
+          <div><strong id="audit-selected">—</strong><span id="audit-selected-note">legal and included</span></div>
+        </div>
+        <div class="audit-item">
+          <span class="audit-icon excluded-icon" aria-hidden="true"></span>
+          <div><strong id="audit-excluded">—</strong><span>excluded with a reason</span></div>
+        </div>
+        <div class="audit-principle">
+          <svg viewBox="0 0 32 36" aria-hidden="true">
+            <path d="M16 2 29 7v10c0 8-5 14-13 17C8 31 3 25 3 17V7l13-5Z"></path>
+            <path d="m10 18 4 4 8-9"></path>
+          </svg>
+          <div>
+            <strong id="audit-principle-text">Relevance is optimized only after legality.</strong>
+            <span>Declared metadata in, auditable receipt out.</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

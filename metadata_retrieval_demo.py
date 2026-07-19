@@ -563,7 +563,7 @@ def build_database(records: Sequence[dict]) -> sqlite3.Connection:
     return connection
 
 
-def _fts_expression(search_terms: Sequence[str]) -> str:
+def fts_expression(search_terms: Sequence[str]) -> str:
     quoted = ['"' + term.replace('"', '""') + '"' for term in search_terms]
     return " OR ".join(quoted)
 
@@ -591,7 +591,7 @@ def run_query(
     table = "broad_fts" if mode == "broad" else "content_fts"
     weights = "0.0, 5.0, 1.0, 1.5" if mode == "broad" else "0.0, 5.0, 1.0"
     clauses = [f"{table} MATCH ?"]
-    params: list[object] = [_fts_expression(query["search_terms"])]
+    params: list[object] = [fts_expression(query["search_terms"])]
 
     if mode == "discriminative":
         excluded = _excluded_filter_keys(ablated_groups)

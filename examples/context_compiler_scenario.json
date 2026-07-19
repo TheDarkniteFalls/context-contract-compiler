@@ -1,0 +1,83 @@
+{
+  "id": "retry-safety",
+  "name": "Retry safety contract",
+  "contract": {
+    "task": "Implement retry backoff for the API client",
+    "as_of": "2025-05-20",
+    "project": "acme-infra",
+    "scope": "api-client",
+    "allowed_sources": [
+      "architecture_record",
+      "decision_log",
+      "incident_report",
+      "runbook"
+    ],
+    "allowed_authorities": [
+      "architecture",
+      "engineering",
+      "reliability"
+    ],
+    "required_record_ids": [
+      "ADR-0234"
+    ],
+    "forbidden_lifecycle_states": [
+      "draft",
+      "rejected"
+    ],
+    "forbidden_sensitivity_states": [
+      "restricted",
+      "writer_only"
+    ],
+    "token_budget": 96
+  },
+  "controls": {
+    "future_reveal": true,
+    "superseded_decision": true,
+    "generated_draft": true,
+    "rejected_plan": true,
+    "ambiguous_identity": true,
+    "remove_required_provenance": false,
+    "tight_token_budget": false
+  },
+  "fire_drill": {
+    "id": "late-connection-pool-correction",
+    "name": "Late user correction",
+    "change": {
+      "kind": "late_user_correction",
+      "summary": "Also preserve connection-pool stability; treat RUN-0880 as required context.",
+      "required_record_ids": [
+        "RUN-0880"
+      ]
+    },
+    "current_contract": {
+      "task": "Implement retry backoff for the API client without repeating connection-pool exhaustion",
+      "as_of": "2025-05-20",
+      "project": "acme-infra",
+      "scope": "api-client",
+      "allowed_sources": [
+        "architecture_record",
+        "decision_log",
+        "incident_report",
+        "runbook"
+      ],
+      "allowed_authorities": [
+        "architecture",
+        "engineering",
+        "reliability"
+      ],
+      "required_record_ids": [
+        "ADR-0234",
+        "RUN-0880"
+      ],
+      "forbidden_lifecycle_states": [
+        "draft",
+        "rejected"
+      ],
+      "forbidden_sensitivity_states": [
+        "restricted",
+        "writer_only"
+      ],
+      "token_budget": 96
+    }
+  }
+}
