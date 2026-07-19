@@ -1,6 +1,6 @@
-# Testing ContextGate
+# Testing Context Contract Compiler
 
-ContextGate is a dependency-free local Python tool. Tests use synthetic data
+Context Contract Compiler is a dependency-free local Python tool. Tests use synthetic data
 and make no model or external network calls.
 
 ## Runtime and Platforms
@@ -31,15 +31,15 @@ FTS5 ready
 From the repository root:
 
 ```sh
-python3 -B contextgate.py check
+python3 -B context_compiler.py check
 ```
 
-This runs the ContextGate self-test, retrieval-foundation self-test, typed
+This runs the Context Contract Compiler self-test, retrieval-foundation self-test, typed
 failure registry, all unit tests, and Python compilation in an isolated cache
 directory. Expected final line:
 
 ```text
-PASS ContextGate full check
+PASS Context Contract Compiler full check
 ```
 
 A managed environment may deny local socket binding and explicitly skip the
@@ -51,7 +51,7 @@ normal local host and require all 39 tests to pass before release.
 Start the local debugger:
 
 ```sh
-python3 -B contextgate.py serve --open
+python3 -B context_compiler.py serve --open
 ```
 
 The server prints `http://localhost:8765/` and remains in the foreground.
@@ -61,8 +61,8 @@ The default result should show:
 
 - header state `COMPILED`;
 - naïve packet: 5 selected, 90/96 tokens, 5 illegal, 1 required missed;
-- ContextGate packet: `ADR-0234`, `DEC-0421`, `GUIDE-0112`, `RUN-0880`;
-- ContextGate accounting: 4 selected, 74/96 tokens, 22 remaining;
+- Context Contract Compiler packet: `ADR-0234`, `DEC-0421`, `GUIDE-0112`, `RUN-0880`;
+- Context Contract Compiler accounting: 4 selected, 74/96 tokens, 22 remaining;
 - trace: 13 decisions, 9 exclusions; and
 - deterministic receipt `cg-ff514334694491b7` for the unmodified fixture;
 - contract fingerprint `cgc-51acadc4b905a993`; and
@@ -116,31 +116,31 @@ Also verify:
 Human-readable default compile:
 
 ```sh
-python3 -B contextgate.py compile
+python3 -B context_compiler.py compile
 ```
 
 Machine-readable receipt:
 
 ```sh
-python3 -B contextgate.py compile --json
+python3 -B context_compiler.py compile --json
 ```
 
 Expected fail-closed commands return exit code `2`:
 
 ```sh
-python3 -B contextgate.py compile --remove-required-provenance
-python3 -B contextgate.py compile --tight-token-budget
+python3 -B context_compiler.py compile --remove-required-provenance
+python3 -B context_compiler.py compile --tight-token-budget
 ```
 
 Remove the five record-poison candidates without changing the other records:
 
 ```sh
-python3 -B contextgate.py compile --no-poisons --json
+python3 -B context_compiler.py compile --no-poisons --json
 ```
 
 ## Foundation Regression Commands
 
-The ContextGate compiler and debugger must not weaken the original retrieval
+The Context Contract Compiler and debugger must not weaken the original retrieval
 harness:
 
 ```sh
@@ -161,7 +161,8 @@ curl --fail --silent http://localhost:8765/api/health
 curl --fail --silent http://localhost:8765/api/compile
 ```
 
-The health endpoint returns `{"product":"ContextGate","status":"ok"}`
+The health endpoint returns
+`{"product":"Context Contract Compiler","status":"ok"}`
 (JSON key order is not a contract). The compile endpoint returns the same
 deterministic receipt shown in the interface. `POST /api/fire-drill` accepts
 exactly `prior_receipt`, `change`, `current_contract`, and `controls`; it

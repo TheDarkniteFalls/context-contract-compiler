@@ -1,6 +1,6 @@
-# ContextGate — Deterministic Context Contract Compiler
+# Context Contract Compiler
 
-[![checks](https://github.com/TheDarkniteFalls/sqlite-context-retrieval-example/actions/workflows/checks.yml/badge.svg)](https://github.com/TheDarkniteFalls/sqlite-context-retrieval-example/actions/workflows/checks.yml)
+[![checks](https://github.com/TheDarkniteFalls/context-contract-compiler/actions/workflows/checks.yml/badge.svg)](https://github.com/TheDarkniteFalls/context-contract-compiler/actions/workflows/checks.yml)
 
 <!-- toolkit-trust-card:start -->
 > **Public contract:** Experimental pattern · about 10 min · Python 3 · no model · no network
@@ -11,10 +11,10 @@
 >
 > **It does not establish:** Structured metadata and changes are supplied; the project does not discover runtime changes, authorize actions, verify truth, or prove downstream model safety.
 >
-> **First check:** `python3 -B contextgate.py check`
+> **First check:** `python3 -B context_compiler.py check`
 <!-- toolkit-trust-card:end -->
 
-> ContextGate compiles the smallest context an AI is allowed to see, proves
+> Context Contract Compiler compiles the smallest context an AI is allowed to see, proves
 > every inclusion and exclusion, and detects when that context must be
 > recompiled.
 
@@ -23,7 +23,7 @@ the task. A close match may belong to another project, come from the future,
 have been superseded, remain unreviewed, lack provenance, or displace an older
 obligation that must not be omitted.
 
-ContextGate is a dependency-free local Context Debugger for that boundary. It
+Context Contract Compiler is a dependency-free local Context Debugger for that boundary. It
 compares a deliberately naïve relevance-only packet with a legality-first
 packet under the same task and token budget. Every supplied record receives a
 deterministic decision, and an illegal, unsupported, absent, or over-budget
@@ -35,7 +35,7 @@ packet cannot silently continue.
 All fixtures are synthetic. Runtime requires no model, API key, package
 install, network access, or external data.
 
-![ContextGate refusing continuation from a stale receipt](docs/assets/contextgate-stale-receipt.jpg)
+![Context Contract Compiler refusing continuation from a stale receipt](docs/assets/context-contract-compiler-stale-receipt.jpg)
 
 *Agent Fire Drill freezes a valid receipt, then refuses continuation after a
 declared late correction until the context is recompiled.*
@@ -45,14 +45,14 @@ declared late correction until the context is recompiled.*
 Requires Python 3 with SQLite FTS5. From the repository root:
 
 ```sh
-python3 -B contextgate.py serve --open
+python3 -B context_compiler.py serve --open
 ```
 
 If the browser does not open automatically, visit
 `http://localhost:8765/`. The checked-in retry-policy scenario compiles on
 load.
 
-1. Compare **Naïve relevance** with **ContextGate packet**.
+1. Compare **Naïve relevance** with **Context Contract Compiler packet**.
 2. Find required record `ADR-0234`, which naïve ranking misses.
 3. Read the reason code and boundary fact for each of the 13 candidates.
 4. In **Agent Fire Drill**, select **Inject late correction** and observe
@@ -69,12 +69,12 @@ The default run is deliberately sharp:
 | Result | Selected | Tokens | What happened |
 | --- | ---: | ---: | --- |
 | Naïve relevance | 5 | 90 / 96 | All 5 are illegal; required `ADR-0234` is missed |
-| ContextGate | 4 | 74 / 96 | Required obligation protected; 9 candidates excluded with reasons |
+| Context Contract Compiler | 4 | 74 / 96 | Required obligation protected; 9 candidates excluded with reasons |
 
 Run the entire deterministic check stack with one command:
 
 ```sh
-python3 -B contextgate.py check
+python3 -B context_compiler.py check
 ```
 
 See [TESTING.md](TESTING.md) for installation checks, the manual acceptance
@@ -82,7 +82,7 @@ route, CLI/API use, and the seven-control matrix.
 
 ## The Product Boundary
 
-Retrieval asks which records look similar. ContextGate first compiles a task
+Retrieval asks which records look similar. Context Contract Compiler first compiles a task
 contract, then permits ranking only inside the legal candidate set:
 
 ```text
@@ -119,7 +119,7 @@ The contract declares:
 
 Required records are resolved before relevance ranking. If a required record
 is absent, illegal, unsupported by provenance, or too large for the contract,
-ContextGate emits no packet. Optional records are ranked only after legality
+Context Contract Compiler emits no packet. Optional records are ranked only after legality
 checks and pruned last.
 
 ## Context Debugger
@@ -146,16 +146,16 @@ Compare, and Trace tabs.
 Compile the default scenario in the terminal:
 
 ```sh
-python3 -B contextgate.py compile
-python3 -B contextgate.py compile --json
+python3 -B context_compiler.py compile
+python3 -B context_compiler.py compile --json
 ```
 
 Exercise the two fail-closed paths directly. Exit code `2` is expected because
 no packet is emitted:
 
 ```sh
-python3 -B contextgate.py compile --remove-required-provenance
-python3 -B contextgate.py compile --tight-token-budget
+python3 -B context_compiler.py compile --remove-required-provenance
+python3 -B context_compiler.py compile --tight-token-budget
 ```
 
 The local server exposes:
@@ -210,14 +210,14 @@ declared contract:
 It does **not** establish that record contents are true, metadata is honest or
 complete, the declared contract is the right policy, access control happened
 upstream, a downstream model used the packet correctly, or an answer is safe,
-private, or correct. ContextGate is a context-selection contract compiler, not
+private, or correct. Context Contract Compiler is a context-selection compiler, not
 an authorization service, truth oracle, action gate, or runtime monitor. The
 staleness decision compares supplied evidence; it does not observe an agent or
 discover changes by itself.
 
 ## Retrieval Foundation
 
-ContextGate reuses the repository's FTS5 expression and synthetic
+Context Contract Compiler reuses the repository's FTS5 expression and synthetic
 failure-driven retrieval harness instead of adding a competing retrieval
 engine. The foundation compares content-only, broad-metadata, and
 discriminative-metadata retrieval across 35 synthetic records and 12 queries.
@@ -246,15 +246,15 @@ python3 -B metadata_retrieval_demo.py correction-preview "wrong project"
 
 ## Files
 
-- `contextgate.py`: contract validation, legality-first compiler, reason codes,
+- `context_compiler.py`: contract validation, legality-first compiler, reason codes,
   packet/receipt/fingerprint generation, stateless staleness decisions, CLI,
   local API/server, self-test, and full check.
 - `web/`: responsive static Context Debugger.
-- `examples/contextgate_records.jsonl`: 13 neutral, deliberately confusable
+- `examples/context_compiler_records.jsonl`: 13 neutral, deliberately confusable
   software-project records.
-- `examples/contextgate_scenario.json`: default contract, poison controls, and
+- `examples/context_compiler_scenario.json`: default contract, poison controls, and
   one synthetic late-correction drill.
-- `tests/test_contextgate.py`: compiler, fail-closed, staleness, UI contract,
+- `tests/test_context_compiler.py`: compiler, fail-closed, staleness, UI contract,
   and HTTP regressions.
 - `metadata_retrieval_demo.py`, `examples/context_items.jsonl`,
   `examples/eval_queries.jsonl`, `examples/failure_cases.jsonl`, and
@@ -262,7 +262,7 @@ python3 -B metadata_retrieval_demo.py correction-preview "wrong project"
 
 ## Limits and Status
 
-ContextGate is a local, single-user developer tool and synthetic reference
+Context Contract Compiler is a local, single-user developer tool and synthetic reference
 implementation—not a production policy engine, access-control layer, vector
 database, natural-language policy parser, metadata verifier, or hosted
 service. It does not observe a real agent runtime or provide action

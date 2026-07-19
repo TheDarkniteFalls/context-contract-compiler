@@ -10,18 +10,18 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-import contextgate
+import context_compiler
 
 
-class ContextGateCompilerTests(unittest.TestCase):
+class ContextCompilerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.records = contextgate.load_jsonl(contextgate.DEFAULT_RECORDS)
-        contextgate.validate_records(cls.records)
-        cls.scenario = contextgate.load_scenario(contextgate.DEFAULT_SCENARIO)
+        cls.records = context_compiler.load_jsonl(context_compiler.DEFAULT_RECORDS)
+        context_compiler.validate_records(cls.records)
+        cls.scenario = context_compiler.load_scenario(context_compiler.DEFAULT_SCENARIO)
 
     def compile(self, *, contract=None, controls=None):  # type: ignore[no-untyped-def]
-        return contextgate.compile_context(
+        return context_compiler.compile_context(
             self.records,
             contract or self.scenario["contract"],
             controls or self.scenario["controls"],
@@ -31,9 +31,9 @@ class ContextGateCompilerTests(unittest.TestCase):
         return {"kind": "none", "summary": "", "required_record_ids": []}
 
     def evaluate(self, prior, change, current_contract, *, records=None):  # type: ignore[no-untyped-def]
-        return contextgate.evaluate_context_staleness(
+        return context_compiler.evaluate_context_staleness(
             records or self.records,
-            contextgate.receipt_proof(prior),
+            context_compiler.receipt_proof(prior),
             change,
             current_contract,
             self.scenario["controls"],
@@ -42,7 +42,7 @@ class ContextGateCompilerTests(unittest.TestCase):
     def test_fixture_is_small_synthetic_and_schema_valid(self) -> None:
         self.assertEqual(len(self.records), 13)
         self.assertEqual(len(self.records), len({row["id"] for row in self.records}))
-        fixture_text = contextgate.DEFAULT_RECORDS.read_text(encoding="utf-8")
+        fixture_text = context_compiler.DEFAULT_RECORDS.read_text(encoding="utf-8")
         for forbidden in (str(Path.home()), "private_source_path", "production.sqlite"):
             self.assertNotIn(forbidden, fixture_text)
 
@@ -154,11 +154,11 @@ class ContextGateCompilerTests(unittest.TestCase):
 
     def test_turning_off_record_poisons_removes_only_those_candidates(self) -> None:
         controls = dict(self.scenario["controls"])
-        controls.update({control: False for control in contextgate.CONTROL_RECORDS})
+        controls.update({control: False for control in context_compiler.CONTROL_RECORDS})
         result = self.compile(controls=controls)
         self.assertEqual(result["summary"]["candidate_count"], 8)
         trace_ids = {row["record_id"] for row in result["trace"]}
-        self.assertFalse(set(contextgate.CONTROL_RECORDS.values()) & trace_ids)
+        self.assertFalse(set(context_compiler.CONTROL_RECORDS.values()) & trace_ids)
 
     def test_compile_and_receipt_are_deterministic(self) -> None:
         first = self.compile()
@@ -257,13 +257,13 @@ class ContextGateCompilerTests(unittest.TestCase):
             self.compile(contract=duplicate)
 
     def test_static_debugger_contains_the_required_judge_controls(self) -> None:
-        html = (contextgate.WEB_ROOT / "index.html").read_text(encoding="utf-8")
-        javascript = (contextgate.WEB_ROOT / "app.js").read_text(encoding="utf-8")
+        html = (context_compiler.WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        javascript = (context_compiler.WEB_ROOT / "app.js").read_text(encoding="utf-8")
         debugger_source = html + javascript
         for label in (
             "Task contract",
             "Naïve relevance",
-            "ContextGate packet",
+            "Context Contract Compiler packet",
             "Decision trace",
             "Copy packet",
             "Adversarial controls",
@@ -275,8 +275,8 @@ class ContextGateCompilerTests(unittest.TestCase):
         html_ids = re.findall(r'\bid="([^"]+)"', html)
         self.assertEqual(len(html_ids), len(set(html_ids)))
         referenced_ids = set(re.findall(r'byId\("([^"]+)"\)', javascript))
-        payload = contextgate.scenario_payload(
-            contextgate.DEFAULT_RECORDS, contextgate.DEFAULT_SCENARIO
+        payload = context_compiler.scenario_payload(
+            context_compiler.DEFAULT_RECORDS, context_compiler.DEFAULT_SCENARIO
         )
         dynamic_ids = {
             f"control-{item['id']}" for item in payload["options"]["controls"]
@@ -284,22 +284,22 @@ class ContextGateCompilerTests(unittest.TestCase):
         self.assertEqual(referenced_ids - set(html_ids) - dynamic_ids, set())
         self.assertEqual(
             {item["id"] for item in payload["options"]["controls"]},
-            contextgate.CONTROL_FIELDS,
+            context_compiler.CONTROL_FIELDS,
         )
 
 
-class QuietContextGateHandler(contextgate.ContextGateHandler):
+class QuietContextCompilerHandler(context_compiler.ContextCompilerHandler):
     def log_message(self, format: str, *args: object) -> None:
         return
 
 
-class ContextGateHTTPTests(unittest.TestCase):
+class ContextCompilerHTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        QuietContextGateHandler.records_path = contextgate.DEFAULT_RECORDS
-        QuietContextGateHandler.scenario_path = contextgate.DEFAULT_SCENARIO
+        QuietContextCompilerHandler.records_path = context_compiler.DEFAULT_RECORDS
+        QuietContextCompilerHandler.scenario_path = context_compiler.DEFAULT_SCENARIO
         try:
-            cls.server = ThreadingHTTPServer(("localhost", 0), QuietContextGateHandler)
+            cls.server = ThreadingHTTPServer(("localhost", 0), QuietContextCompilerHandler)
         except PermissionError as exc:
             raise unittest.SkipTest(
                 "managed sandbox blocked localhost binding; rerun outside the managed sandbox"
@@ -321,13 +321,15 @@ class ContextGateHTTPTests(unittest.TestCase):
     def test_health_and_scenario_endpoints(self) -> None:
         response, health = self.get_json("/api/health")
         self.assertEqual(response.status, 200)
-        self.assertEqual(health, {"product": "ContextGate", "status": "ok"})
+        self.assertEqual(
+            health, {"product": "Context Contract Compiler", "status": "ok"}
+        )
         _, scenario = self.get_json("/api/scenario")
         self.assertEqual(scenario["scenario"]["id"], "retry-safety")
         self.assertEqual(len(scenario["options"]["controls"]), 7)
 
     def test_compile_endpoint_and_security_headers(self) -> None:
-        scenario = contextgate.load_scenario(contextgate.DEFAULT_SCENARIO)
+        scenario = context_compiler.load_scenario(context_compiler.DEFAULT_SCENARIO)
         payload = json.dumps(
             {"contract": scenario["contract"], "controls": scenario["controls"]}
         ).encode("utf-8")
@@ -347,7 +349,7 @@ class ContextGateHTTPTests(unittest.TestCase):
         fire_drill = scenario["fire_drill"]
         payload = json.dumps(
             {
-                "prior_receipt": contextgate.receipt_proof(result),
+                "prior_receipt": context_compiler.receipt_proof(result),
                 "change": fire_drill["change"],
                 "current_contract": fire_drill["current_contract"],
                 "controls": scenario["controls"],
@@ -383,7 +385,7 @@ class ContextGateHTTPTests(unittest.TestCase):
         with urllib.request.urlopen(self.base_url + "/", timeout=2) as response:
             html = response.read().decode("utf-8")
             self.assertEqual(response.status, 200)
-            self.assertIn("ContextGate · Context Debugger", html)
+            self.assertIn("Context Contract Compiler · Context Debugger", html)
             self.assertIn("app.js", html)
 
 

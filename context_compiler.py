@@ -25,8 +25,8 @@ from metadata_retrieval_demo import fts_expression, load_jsonl
 
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_RECORDS = ROOT / "examples" / "contextgate_records.jsonl"
-DEFAULT_SCENARIO = ROOT / "examples" / "contextgate_scenario.json"
+DEFAULT_RECORDS = ROOT / "examples" / "context_compiler_records.jsonl"
+DEFAULT_SCENARIO = ROOT / "examples" / "context_compiler_scenario.json"
 WEB_ROOT = ROOT / "web"
 
 CONTRACT_FIELDS = {
@@ -129,7 +129,7 @@ def _validate_iso_date(value: object, label: str) -> None:
 
 def validate_records(records: Sequence[dict]) -> None:
     if not records:
-        raise ValueError("ContextGate requires at least one record")
+        raise ValueError("Context Contract Compiler requires at least one record")
     seen: set[str] = set()
     for index, record in enumerate(records, start=1):
         missing = RECORD_FIELDS - record.keys()
@@ -336,7 +336,7 @@ def rank_records(records: Sequence[dict], task: str) -> tuple[str, ...]:
         try:
             connection.execute(
                 """
-                CREATE VIRTUAL TABLE contextgate_fts USING fts5(
+                CREATE VIRTUAL TABLE context_compiler_fts USING fts5(
                     id UNINDEXED,
                     title,
                     body,
@@ -347,7 +347,7 @@ def rank_records(records: Sequence[dict], task: str) -> tuple[str, ...]:
         except sqlite3.OperationalError as exc:
             raise RuntimeError("This Python SQLite build does not provide FTS5") from exc
         connection.executemany(
-            "INSERT INTO contextgate_fts (id, title, body, tags) VALUES (?, ?, ?, ?)",
+            "INSERT INTO context_compiler_fts (id, title, body, tags) VALUES (?, ?, ?, ?)",
             (
                 (record["id"], record["title"], record["body"], record["tags"])
                 for record in records
@@ -357,9 +357,9 @@ def rank_records(records: Sequence[dict], task: str) -> tuple[str, ...]:
         rows = connection.execute(
             """
             SELECT id
-            FROM contextgate_fts
-            WHERE contextgate_fts MATCH ?
-            ORDER BY bm25(contextgate_fts, 0.0, 5.0, 2.0, 1.5), id
+            FROM context_compiler_fts
+            WHERE context_compiler_fts MATCH ?
+            ORDER BY bm25(context_compiler_fts, 0.0, 5.0, 2.0, 1.5), id
             """,
             (expression,),
         )
@@ -592,7 +592,7 @@ def _packet_fingerprint(packet: Sequence[dict]) -> str:
 
 def _packet_text(contract: Mapping[str, object], packet: Sequence[dict]) -> str:
     lines = [
-        "ContextGate packet",
+        "Context Contract Compiler packet",
         f'Task: {contract["task"]}',
         f'As of: {contract["as_of"]}',
         f'Project / scope: {contract["project"]} / {contract["scope"]}',
@@ -824,7 +824,7 @@ def compile_context(
         }
     token_count = sum(record["token_count"] for record in packet)
     return {
-        "product": "ContextGate",
+        "product": "Context Contract Compiler",
         "status": status,
         "contract": normalized_contract,
         "requested_token_budget": requested_budget,
@@ -951,7 +951,7 @@ def evaluate_context_staleness(
         )
 
     return {
-        "product": "ContextGate",
+        "product": "Context Contract Compiler",
         "mode": "context_staleness",
         "outcome": outcome,
         "can_continue": outcome == "continue",
@@ -974,7 +974,7 @@ def scenario_payload(records_path: Path, scenario_path: Path) -> dict:
     validate_records(records)
     scenario = load_scenario(scenario_path)
     return {
-        "product": "ContextGate",
+        "product": "Context Contract Compiler",
         "scenario": scenario,
         "options": {
             "sources": sorted({record["source_class"] for record in records}),
@@ -1112,7 +1112,7 @@ def run_full_check(records_path: Path, scenario_path: Path) -> int:
     test_result = unittest.TextTestRunner(verbosity=2).run(suite)
     if not test_result.wasSuccessful():
         return 1
-    with tempfile.TemporaryDirectory(prefix="contextgate-pycache-") as cache_dir:
+    with tempfile.TemporaryDirectory(prefix="context-compiler-pycache-") as cache_dir:
         env = dict(os.environ)
         env["PYTHONPYCACHEPREFIX"] = cache_dir
         compile_command = [
@@ -1120,20 +1120,20 @@ def run_full_check(records_path: Path, scenario_path: Path) -> int:
             "-B",
             "-m",
             "py_compile",
-            "contextgate.py",
+            "context_compiler.py",
             "metadata_retrieval_demo.py",
-            "tests/test_contextgate.py",
+            "tests/test_context_compiler.py",
             "tests/test_metadata_retrieval_demo.py",
         ]
         print("\n== Python compilation ==")
         completed = subprocess.run(compile_command, cwd=ROOT, env=env, check=False)
         if completed.returncode:
             return completed.returncode
-    print("\nPASS ContextGate full check")
+    print("\nPASS Context Contract Compiler full check")
     return 0
 
 
-class ContextGateHandler(SimpleHTTPRequestHandler):
+class ContextCompilerHandler(SimpleHTTPRequestHandler):
     records_path = DEFAULT_RECORDS
     scenario_path = DEFAULT_SCENARIO
 
@@ -1162,7 +1162,9 @@ class ContextGateHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/api/health":
-            self._send_json(200, {"status": "ok", "product": "ContextGate"})
+            self._send_json(
+                200, {"status": "ok", "product": "Context Contract Compiler"}
+            )
             return
         if path == "/api/scenario":
             try:
@@ -1228,7 +1230,7 @@ class ContextGateHandler(SimpleHTTPRequestHandler):
         self._send_json(200, result)
 
     def log_message(self, format: str, *args: object) -> None:
-        sys.stderr.write("ContextGate: " + format % args + "\n")
+        sys.stderr.write("Context Contract Compiler: " + format % args + "\n")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1254,7 +1256,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _print_compile_summary(result: Mapping[str, object]) -> None:
-    print(f'ContextGate: {str(result["status"]).upper()}')
+    print(f'Context Contract Compiler: {str(result["status"]).upper()}')
     print(f'Receipt: {result["receipt_id"]}')
     naive = result["naive"]
     assert isinstance(naive, dict)
@@ -1305,18 +1307,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "serve":
         if not 0 < args.port < 65_536:
             raise SystemExit("--port must be between 1 and 65535")
-        ContextGateHandler.records_path = args.records
-        ContextGateHandler.scenario_path = args.scenario_file
-        server = ThreadingHTTPServer((args.host, args.port), ContextGateHandler)
+        ContextCompilerHandler.records_path = args.records
+        ContextCompilerHandler.scenario_path = args.scenario_file
+        server = ThreadingHTTPServer((args.host, args.port), ContextCompilerHandler)
         url = f"http://{args.host}:{server.server_port}/"
-        print(f"ContextGate debugger: {url}")
+        print(f"Context Contract Compiler debugger: {url}")
         print("Press Ctrl-C to stop.")
         if args.open:
             webbrowser.open(url)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
-            print("\nStopping ContextGate.")
+            print("\nStopping Context Contract Compiler.")
         finally:
             server.server_close()
         return 0
