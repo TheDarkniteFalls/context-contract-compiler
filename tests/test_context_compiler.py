@@ -73,6 +73,58 @@ class ContextCompilerTests(unittest.TestCase):
         self.assertGreater(required["relevance_rank"], 10)
         self.assertEqual(result["trace"][0]["reason_code"], "SELECTED_REQUIRED")
 
+    def test_future_records_cannot_change_legal_optional_ranking(self) -> None:
+        contract = copy.deepcopy(self.scenario["contract"])
+        contract["token_budget"] = 48
+        baseline = self.compile(contract=contract)
+
+        records = copy.deepcopy(self.records)
+        template = next(row for row in records if row["id"] == "DEC-0421")
+        for index in range(10):
+            future = copy.deepcopy(template)
+            future_id = f"FUTURE-{index:02d}"
+            future.update(
+                {
+                    "id": future_id,
+                    "title": "Backoff",
+                    "body": "Backoff",
+                    "tags": "backoff",
+                    "stable_identity": future_id.lower(),
+                    "valid_from": "2025-06-01",
+                    "provenance": [f"plan://{future_id.lower()}"],
+                }
+            )
+            records.append(future)
+
+        injected = context_compiler.compile_context(
+            records,
+            contract,
+            self.scenario["controls"],
+        )
+        self.assertEqual(
+            [row["id"] for row in baseline["packet"]],
+            ["ADR-0234", "DEC-0421"],
+        )
+        self.assertEqual(
+            [row["id"] for row in injected["packet"]],
+            ["ADR-0234", "DEC-0421"],
+        )
+        injected_trace = {row["record_id"]: row for row in injected["trace"]}
+        raw_ranked_ids = context_compiler.rank_records(records, contract["task"])
+        self.assertEqual(
+            injected_trace["DEC-0421"]["relevance_rank"],
+            raw_ranked_ids.index("DEC-0421") + 1,
+        )
+        self.assertEqual(
+            injected_trace["DEC-0421"]["boundary_fact"],
+            "rank 1 after legality",
+        )
+        for index in range(10):
+            self.assertEqual(
+                injected_trace[f"FUTURE-{index:02d}"]["reason_code"],
+                "EXCLUDE_FUTURE",
+            )
+
     def test_every_active_candidate_has_exactly_one_trace_decision(self) -> None:
         result = self.compile()
         trace_ids = [row["record_id"] for row in result["trace"]]
@@ -379,6 +431,35 @@ class ContextCompilerHTTPTests(unittest.TestCase):
         )
         with self.assertRaises(urllib.error.HTTPError) as caught:
             urllib.request.urlopen(request, timeout=2)
+        self.assertEqual(caught.exception.code, 400)
+
+    def test_post_body_size_boundary(self) -> None:
+        scenario = context_compiler.load_scenario(context_compiler.DEFAULT_SCENARIO)
+        payload = json.dumps(
+            {"contract": scenario["contract"], "controls": scenario["controls"]}
+        ).encode("utf-8")
+        exact = payload + b" " * (
+            context_compiler.REQUEST_BODY_MAX_BYTES - len(payload)
+        )
+        exact_request = urllib.request.Request(
+            self.base_url + "/api/compile",
+            data=exact,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(exact_request, timeout=2) as response:
+            result = json.loads(response.read())
+            self.assertEqual(response.status, 200)
+            self.assertEqual(result["status"], "compiled")
+
+        oversized_request = urllib.request.Request(
+            self.base_url + "/api/compile",
+            data=exact + b" ",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(oversized_request, timeout=2)
         self.assertEqual(caught.exception.code, 400)
 
     def test_static_app_loads(self) -> None:
