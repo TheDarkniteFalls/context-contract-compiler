@@ -120,7 +120,9 @@ The contract declares:
 Required records are resolved before relevance ranking. If a required record
 is absent, illegal, unsupported by provenance, or too large for the contract,
 Context Contract Compiler emits no packet. Optional records are ranked only after legality
-checks and pruned last.
+checks and pruned last. The naïve and compiler paths use the same FTS5 ranking
+implementation, but the naïve path ranks all active records while the compiler
+ranks only legal, non-required optional records.
 
 ## Context Debugger
 
@@ -169,9 +171,10 @@ The local server exposes:
 `POST /api/compile` input must contain exactly `contract` and `controls`.
 Contract, record, and control schemas reject unknown fields. The fire-drill
 request contains a supplied prior receipt, declared change, current contract,
-and controls. The server reloads the current fixture records and stores no
-runtime state. It binds to localhost by default, serves only the static
-debugger, and applies a restrictive Content Security Policy.
+and controls. POST request bodies must be between 1 and 262,144 bytes. The
+server reloads the current fixture records and stores no runtime state. It
+binds to localhost by default, serves only the static debugger, and applies a
+restrictive Content Security Policy.
 
 ## Decision Model
 

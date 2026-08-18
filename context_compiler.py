@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_RECORDS = ROOT / "examples" / "context_compiler_records.jsonl"
 DEFAULT_SCENARIO = ROOT / "examples" / "context_compiler_scenario.json"
 WEB_ROOT = ROOT / "web"
+REQUEST_BODY_MAX_BYTES = 262_144
 
 CONTRACT_FIELDS = {
     "task",
@@ -667,6 +668,19 @@ def compile_context(
     trace_by_id: dict[str, dict] = {}
     budget_remaining = int(normalized_contract["token_budget"])
     if failure_code is None:
+        legal_optional_records = [
+            record
+            for record in active_records
+            if record["id"] not in required_ids
+            and violations[record["id"]] is None
+        ]
+        legal_optional_ranked_ids = rank_records(
+            legal_optional_records, normalized_contract["task"]
+        )
+        legal_optional_rank_positions = {
+            record_id: index
+            for index, record_id in enumerate(legal_optional_ranked_ids, 1)
+        }
         for record_id in required_ids:
             record = by_id[record_id]
             packet.append(
@@ -691,13 +705,8 @@ def compile_context(
                 "record": public_record(record),
             }
 
-        for record_id in ranked_ids:
-            if record_id in trace_by_id:
-                continue
+        for record_id in legal_optional_ranked_ids:
             record = by_id[record_id]
-            violation = violations[record_id]
-            if violation is not None:
-                continue
             if record["token_count"] <= budget_remaining:
                 packet.append(
                     _selected_record(
@@ -714,7 +723,7 @@ def compile_context(
                     "required": False,
                     "reason_code": "SELECTED_RANKED",
                     "boundary_fact": (
-                        f'rank {rank_positions[record_id]} after legality'
+                        f'rank {legal_optional_rank_positions[record_id]} after legality'
                     ),
                     "token_count": record["token_count"],
                     "relevance_rank": rank_positions[record_id],
@@ -1192,7 +1201,7 @@ class ContextCompilerHandler(SimpleHTTPRequestHandler):
         try:
             raw_length = self.headers.get("Content-Length", "")
             length = int(raw_length)
-            if length <= 0 or length > 262_144:
+            if length <= 0 or length > REQUEST_BODY_MAX_BYTES:
                 raise ValueError("request body must be between 1 and 262144 bytes")
             raw = self.rfile.read(length)
             payload = json.loads(raw.decode("utf-8"))
