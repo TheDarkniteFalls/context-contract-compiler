@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Mapping, Sequence
 from urllib.parse import urlparse
 
-from metadata_retrieval_demo import fts_expression, load_jsonl
+from metadata_retrieval_demo import fts_expression
 
 
 ROOT = Path(__file__).resolve().parent
@@ -119,6 +119,47 @@ REQUIRED_REASON_CODES = {
 }
 
 
+def _reject_duplicate_keys(pairs: Sequence[tuple[str, object]]) -> dict:
+    result: dict = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate object key: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_non_finite(value: str) -> object:
+    raise ValueError(f"non-finite number is not allowed: {value}")
+
+
+def strict_json_loads(text: str, label: str) -> object:
+    try:
+        return json.loads(
+            text,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_non_finite,
+        )
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{label} is not valid JSON: {exc.msg}") from exc
+
+
+def load_records(path: Path = DEFAULT_RECORDS) -> list[dict]:
+    records: list[dict] = []
+    with path.open(encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            try:
+                record = strict_json_loads(line, f"records line {line_number}")
+            except ValueError as exc:
+                raise ValueError(f"records line {line_number}: {exc}") from exc
+            if not isinstance(record, dict):
+                raise ValueError(f"records line {line_number} must be a JSON object")
+            records.append(record)
+    validate_records(records)
+    return records
+
+
 def _validate_iso_date(value: object, label: str) -> None:
     if not isinstance(value, str):
         raise ValueError(f"{label} must be an ISO date string")
@@ -133,6 +174,8 @@ def validate_records(records: Sequence[dict]) -> None:
         raise ValueError("Context Contract Compiler requires at least one record")
     seen: set[str] = set()
     for index, record in enumerate(records, start=1):
+        if not isinstance(record, dict):
+            raise ValueError(f"record {index} must be an object")
         missing = RECORD_FIELDS - record.keys()
         extra = record.keys() - RECORD_FIELDS
         if missing or extra:
@@ -141,7 +184,7 @@ def validate_records(records: Sequence[dict]) -> None:
                 f"missing={sorted(missing)} extra={sorted(extra)}"
             )
         record_id = record["id"]
-        if not isinstance(record_id, str) or not record_id:
+        if not isinstance(record_id, str) or not record_id.strip():
             raise ValueError(f"record {index}.id must be a non-empty string")
         if record_id in seen:
             raise ValueError(f"duplicate record id: {record_id}")
@@ -160,27 +203,40 @@ def validate_records(records: Sequence[dict]) -> None:
             "lifecycle",
             "sensitivity",
         ):
-            if not isinstance(record[field], str) or not record[field]:
+            if not isinstance(record[field], str) or not record[field].strip():
                 raise ValueError(f"record {record_id}.{field} must be a non-empty string")
         _validate_iso_date(record["valid_from"], f"record {record_id}.valid_from")
         if record["valid_until"] is not None:
             _validate_iso_date(record["valid_until"], f"record {record_id}.valid_until")
             if record["valid_until"] < record["valid_from"]:
                 raise ValueError(f"record {record_id} ends before it starts")
-        if record["superseded_by"] is not None and not isinstance(
-            record["superseded_by"], str
-        ):
-            raise ValueError(f"record {record_id}.superseded_by must be a string or null")
+        if record["superseded_by"] is not None:
+            if not isinstance(record["superseded_by"], str) or not record[
+                "superseded_by"
+            ].strip():
+                raise ValueError(
+                    f"record {record_id}.superseded_by must be a non-empty string or null"
+                )
+            if record["superseded_by"] == record_id:
+                raise ValueError(f"record {record_id} cannot supersede itself")
         if not isinstance(record["provenance"], list) or not all(
-            isinstance(item, str) and item for item in record["provenance"]
+            isinstance(item, str) and item.strip() for item in record["provenance"]
         ):
             raise ValueError(f"record {record_id}.provenance must be a list of strings")
         token_count = record["token_count"]
         if isinstance(token_count, bool) or not isinstance(token_count, int) or token_count <= 0:
             raise ValueError(f"record {record_id}.token_count must be a positive integer")
+    for record in records:
+        successor = record["superseded_by"]
+        if successor is not None and successor not in seen:
+            raise ValueError(
+                f"record {record['id']}.superseded_by references missing record {successor}"
+            )
 
 
 def validate_contract(contract: Mapping[str, object]) -> dict:
+    if not isinstance(contract, Mapping):
+        raise ValueError("contract must be an object")
     missing = CONTRACT_FIELDS - contract.keys()
     extra = contract.keys() - CONTRACT_FIELDS
     if missing or extra:
@@ -202,7 +258,7 @@ def validate_contract(contract: Mapping[str, object]) -> dict:
     ):
         values = normalized[field]
         if not isinstance(values, list) or not all(
-            isinstance(item, str) and item for item in values
+            isinstance(item, str) and item.strip() for item in values
         ):
             raise ValueError(f"contract.{field} must be a list of strings")
         if len(values) != len(set(values)):
@@ -214,6 +270,8 @@ def validate_contract(contract: Mapping[str, object]) -> dict:
 
 
 def validate_controls(controls: Mapping[str, object]) -> dict[str, bool]:
+    if not isinstance(controls, Mapping):
+        raise ValueError("controls must be an object")
     extra = controls.keys() - CONTROL_FIELDS
     if extra:
         raise ValueError(f"unknown controls: {sorted(extra)}")
@@ -242,7 +300,7 @@ def validate_change(change: Mapping[str, object]) -> dict:
     normalized["summary"] = normalized["summary"].strip()
     required_ids = normalized["required_record_ids"]
     if not isinstance(required_ids, list) or not all(
-        isinstance(item, str) and item for item in required_ids
+        isinstance(item, str) and item.strip() for item in required_ids
     ):
         raise ValueError("change.required_record_ids must be a list of strings")
     if len(required_ids) != len(set(required_ids)):
@@ -271,7 +329,7 @@ def validate_receipt_proof(proof: Mapping[str, object]) -> dict[str, str]:
     normalized: dict[str, str] = {}
     for field in sorted(RECEIPT_PROOF_FIELDS):
         value = proof[field]
-        if not isinstance(value, str) or not value:
+        if not isinstance(value, str) or not value.strip():
             raise ValueError(f"prior_receipt.{field} must be a non-empty string")
         normalized[field] = value
     return normalized
@@ -287,36 +345,82 @@ def validate_fire_drill(drill: Mapping[str, object], base_contract: Mapping[str,
         normalized[field] = normalized[field].strip()
     normalized["change"] = validate_change(normalized["change"])
     normalized["current_contract"] = validate_contract(normalized["current_contract"])
-    missing_requirements = set(normalized["change"]["required_record_ids"]) - set(
-        normalized["current_contract"]["required_record_ids"]
-    )
-    if missing_requirements:
+    declared_late = set(normalized["change"]["required_record_ids"])
+    base_required = set(base_contract["required_record_ids"])
+    current_required = set(normalized["current_contract"]["required_record_ids"])
+    dropped_requirements = base_required - current_required
+    if dropped_requirements:
         raise ValueError(
-            "fire_drill current_contract does not apply required records: "
-            f"{sorted(missing_requirements)}"
+            "fire_drill current_contract drops existing required records: "
+            f"{sorted(dropped_requirements)}"
         )
-    newly_required = set(normalized["change"]["required_record_ids"]) - set(
-        base_contract["required_record_ids"]
-    )
+    newly_required = current_required - base_required
     if not newly_required:
         raise ValueError("fire_drill must add at least one required record")
+    if newly_required != declared_late:
+        raise ValueError(
+            "fire_drill newly required records must exactly match the declared "
+            f"late correction: new={sorted(newly_required)} "
+            f"declared={sorted(declared_late)}"
+        )
     return normalized
 
 
 def load_scenario(path: Path = DEFAULT_SCENARIO) -> dict:
-    with path.open(encoding="utf-8") as handle:
-        scenario = json.load(handle)
+    scenario = strict_json_loads(path.read_text(encoding="utf-8"), "scenario")
     expected = {"id", "name", "contract", "controls", "fire_drill"}
     if not isinstance(scenario, dict) or set(scenario) != expected:
         raise ValueError(f"scenario must contain exactly {sorted(expected)}")
-    if not isinstance(scenario["id"], str) or not isinstance(scenario["name"], str):
-        raise ValueError("scenario id and name must be strings")
+    if (
+        not isinstance(scenario["id"], str)
+        or not scenario["id"].strip()
+        or not isinstance(scenario["name"], str)
+        or not scenario["name"].strip()
+    ):
+        raise ValueError("scenario id and name must be non-empty strings")
     scenario["contract"] = validate_contract(scenario["contract"])
     scenario["controls"] = validate_controls(scenario["controls"])
     scenario["fire_drill"] = validate_fire_drill(
         scenario["fire_drill"], scenario["contract"]
     )
     return scenario
+
+
+def validate_input_bundle(records: Sequence[dict], scenario: Mapping[str, object]) -> None:
+    validate_records(records)
+    record_ids = {record["id"] for record in records}
+    contracts = (
+        ("base contract", scenario["contract"]),
+        ("fire_drill current_contract", scenario["fire_drill"]["current_contract"]),
+    )
+    for label, contract in contracts:
+        missing = set(contract["required_record_ids"]) - record_ids
+        if missing:
+            raise ValueError(
+                f"{label} references missing required records: {sorted(missing)}"
+            )
+    validate_control_records(records, scenario["controls"])
+
+
+def load_input_bundle(
+    records_path: Path = DEFAULT_RECORDS,
+    scenario_path: Path = DEFAULT_SCENARIO,
+) -> tuple[list[dict], dict]:
+    records = load_records(records_path)
+    scenario = load_scenario(scenario_path)
+    validate_input_bundle(records, scenario)
+    return records, scenario
+
+
+def validate_control_records(
+    records: Sequence[dict], controls: Mapping[str, bool]
+) -> None:
+    record_ids = {record["id"] for record in records}
+    for control, record_id in CONTROL_RECORDS.items():
+        if controls.get(control, False) and record_id not in record_ids:
+            raise ValueError(
+                f"enabled control {control} requires missing record {record_id}"
+            )
 
 
 def extract_search_terms(task: str) -> tuple[str, ...]:
@@ -369,7 +473,11 @@ def rank_records(records: Sequence[dict], task: str) -> tuple[str, ...]:
         connection.close()
 
 
-def apply_controls(records: Sequence[dict], controls: Mapping[str, bool]) -> list[dict]:
+def apply_controls(
+    records: Sequence[dict],
+    controls: Mapping[str, bool],
+    required_record_ids: Sequence[str] = (),
+) -> list[dict]:
     hidden_ids = {
         record_id
         for control, record_id in CONTROL_RECORDS.items()
@@ -377,8 +485,13 @@ def apply_controls(records: Sequence[dict], controls: Mapping[str, bool]) -> lis
     }
     active = [copy.deepcopy(record) for record in records if record["id"] not in hidden_ids]
     if controls.get("remove_required_provenance", False):
+        active_ids = {record["id"] for record in active}
+        required_id = next(
+            (record_id for record_id in required_record_ids if record_id in active_ids),
+            None,
+        )
         for record in active:
-            if record["id"] == "ADR-0234":
+            if record["id"] == required_id:
                 record["provenance"] = []
     return active
 
@@ -625,7 +738,12 @@ def compile_context(
     validate_records(records)
     normalized_contract = validate_contract(contract)
     normalized_controls = validate_controls(controls or {})
-    active_records = apply_controls(records, normalized_controls)
+    validate_control_records(records, normalized_controls)
+    active_records = apply_controls(
+        records,
+        normalized_controls,
+        normalized_contract["required_record_ids"],
+    )
     requested_budget = normalized_contract["token_budget"]
     if normalized_controls["tight_token_budget"]:
         normalized_contract["token_budget"] = min(
@@ -979,33 +1097,52 @@ def evaluate_context_staleness(
 
 
 def scenario_payload(records_path: Path, scenario_path: Path) -> dict:
-    records = load_jsonl(records_path)
-    validate_records(records)
-    scenario = load_scenario(scenario_path)
+    records, scenario = load_input_bundle(records_path, scenario_path)
+    record_ids = {record["id"] for record in records}
+    contracts = (
+        scenario["contract"],
+        scenario["fire_drill"]["current_contract"],
+    )
+    sources = {record["source_class"] for record in records}
+    authorities = {record["authority"] for record in records}
+    lifecycle_states = {record["lifecycle"] for record in records}
+    sensitivity_states = {record["sensitivity"] for record in records}
+    for contract in contracts:
+        sources.update(contract["allowed_sources"])
+        authorities.update(contract["allowed_authorities"])
+        lifecycle_states.update(contract["forbidden_lifecycle_states"])
+        sensitivity_states.update(contract["forbidden_sensitivity_states"])
+    required_choices = [
+        {"id": record["id"], "title": record["title"]}
+        for record in records
+        if first_violation(record, scenario["contract"]) is None
+    ]
+    applicable_controls = [
+        control
+        for control in (
+            "future_reveal",
+            "superseded_decision",
+            "generated_draft",
+            "rejected_plan",
+            "ambiguous_identity",
+        )
+        if CONTROL_RECORDS[control] in record_ids
+    ]
+    if scenario["contract"]["required_record_ids"]:
+        applicable_controls.append("remove_required_provenance")
+    applicable_controls.append("tight_token_budget")
     return {
         "product": "Context Contract Compiler",
         "scenario": scenario,
         "options": {
-            "sources": sorted({record["source_class"] for record in records}),
-            "authorities": sorted({record["authority"] for record in records}),
-            "required_records": [
-                {"id": record["id"], "title": record["title"]}
-                for record in records
-                if record["id"] in {"ADR-0234", "DEC-0421", "GUIDE-0112", "RUN-0880"}
-            ],
-            "lifecycle_states": sorted({record["lifecycle"] for record in records}),
-            "sensitivity_states": sorted({record["sensitivity"] for record in records}),
+            "sources": sorted(sources),
+            "authorities": sorted(authorities),
+            "required_records": required_choices,
+            "lifecycle_states": sorted(lifecycle_states),
+            "sensitivity_states": sorted(sensitivity_states),
             "controls": [
                 {"id": control, "label": CONTROL_LABELS[control]}
-                for control in (
-                    "future_reveal",
-                    "superseded_decision",
-                    "generated_draft",
-                    "rejected_plan",
-                    "ambiguous_identity",
-                    "remove_required_provenance",
-                    "tight_token_budget",
-                )
+                for control in applicable_controls
             ],
         },
     }
@@ -1018,8 +1155,7 @@ def compile_default(
     contract_override: Mapping[str, object] | None = None,
     controls_override: Mapping[str, object] | None = None,
 ) -> dict:
-    records = load_jsonl(records_path)
-    scenario = load_scenario(scenario_path)
+    records, scenario = load_input_bundle(records_path, scenario_path)
     contract = copy.deepcopy(scenario["contract"])
     if contract_override is not None:
         contract.update(copy.deepcopy(dict(contract_override)))
@@ -1069,8 +1205,7 @@ def run_self_test(records_path: Path, scenario_path: Path) -> None:
     repeated = compile_default(records_path, scenario_path)
     assert repeated == compiled
     print("PASS deterministic_repeat")
-    records = load_jsonl(records_path)
-    scenario = load_scenario(scenario_path)
+    records, scenario = load_input_bundle(records_path, scenario_path)
     stale = evaluate_context_staleness(
         records,
         receipt_proof(compiled),
@@ -1201,11 +1336,16 @@ class ContextCompilerHandler(SimpleHTTPRequestHandler):
         try:
             raw_length = self.headers.get("Content-Length", "")
             length = int(raw_length)
-            if length <= 0 or length > REQUEST_BODY_MAX_BYTES:
+            if length <= 0:
+                raise ValueError("request body must be between 1 and 262144 bytes")
+            if length > REQUEST_BODY_MAX_BYTES:
+                # Consume only the first rejected boundary byte so clients that
+                # sent exactly MAX + 1 receive the deterministic HTTP 400.
+                self.rfile.read(min(length, REQUEST_BODY_MAX_BYTES + 1))
                 raise ValueError("request body must be between 1 and 262144 bytes")
             raw = self.rfile.read(length)
-            payload = json.loads(raw.decode("utf-8"))
-            records = load_jsonl(self.records_path)
+            payload = strict_json_loads(raw.decode("utf-8"), "request body")
+            records, _ = load_input_bundle(self.records_path, self.scenario_path)
             if path == "/api/compile":
                 expected = {"contract", "controls"}
                 if not isinstance(payload, dict) or set(payload) != expected:
@@ -1255,6 +1395,11 @@ def build_parser() -> argparse.ArgumentParser:
     compile_parser.add_argument("--tight-token-budget", action="store_true")
     compile_parser.add_argument("--no-poisons", action="store_true")
 
+    subparsers.add_parser(
+        "validate-inputs",
+        help="Validate the configured records and scenario without compiling",
+    )
+
     serve_parser = subparsers.add_parser("serve", help="Run the local Context Debugger")
     serve_parser.add_argument("--host", default="localhost")
     serve_parser.add_argument("--port", type=int, default=8765)
@@ -1296,6 +1441,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.command == "check":
         return run_full_check(args.records, args.scenario_file)
+    if args.command == "validate-inputs":
+        try:
+            records, scenario = load_input_bundle(args.records, args.scenario_file)
+        except (OSError, UnicodeError, ValueError) as exc:
+            print(f"INVALID INPUTS: {exc}", file=sys.stderr)
+            return 2
+        print(
+            "VALID INPUTS: "
+            f"records={len(records)} scenarios=1 "
+            f"base_required={len(scenario['contract']['required_record_ids'])} "
+            "late_required="
+            f"{len(scenario['fire_drill']['change']['required_record_ids'])}"
+        )
+        return 0
     if args.command == "compile" or args.command is None:
         controls: dict[str, bool] = {}
         if args.command == "compile":
@@ -1303,11 +1462,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             controls["tight_token_budget"] = args.tight_token_budget
             if args.no_poisons:
                 controls.update({control: False for control in CONTROL_RECORDS})
-        result = compile_default(
-            args.records,
-            args.scenario_file,
-            controls_override=controls,
-        )
+        try:
+            result = compile_default(
+                args.records,
+                args.scenario_file,
+                controls_override=controls,
+            )
+        except (OSError, UnicodeError, ValueError) as exc:
+            print(f"INVALID INPUTS: {exc}", file=sys.stderr)
+            return 2
         if args.command == "compile" and args.json:
             print(json.dumps(result, indent=2, sort_keys=True))
         else:
@@ -1315,7 +1478,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0 if result["status"] == "compiled" else 2
     if args.command == "serve":
         if not 0 < args.port < 65_536:
-            raise SystemExit("--port must be between 1 and 65535")
+            print("INVALID INPUTS: --port must be between 1 and 65535", file=sys.stderr)
+            return 2
+        try:
+            load_input_bundle(args.records, args.scenario_file)
+        except (OSError, UnicodeError, ValueError) as exc:
+            print(f"INVALID INPUTS: {exc}", file=sys.stderr)
+            return 2
         ContextCompilerHandler.records_path = args.records
         ContextCompilerHandler.scenario_path = args.scenario_file
         server = ThreadingHTTPServer((args.host, args.port), ContextCompilerHandler)

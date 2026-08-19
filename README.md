@@ -176,6 +176,47 @@ server reloads the current fixture records and stores no runtime state. It
 binds to localhost by default, serves only the static debugger, and applies a
 restrictive Content Security Policy.
 
+## Adapt Your Records
+
+Start by copying `examples/starter_records.jsonl` and
+`examples/starter_scenario.json` to a separate working directory. Keep private
+records outside this public repository. Global input options must come before
+the subcommand:
+
+```sh
+python3 -B context_compiler.py \
+  --records /path/to/records.jsonl \
+  --scenario-file /path/to/scenario.json \
+  validate-inputs
+
+python3 -B context_compiler.py \
+  --records /path/to/records.jsonl \
+  --scenario-file /path/to/scenario.json \
+  compile --json
+
+python3 -B context_compiler.py \
+  --records /path/to/records.jsonl \
+  --scenario-file /path/to/scenario.json \
+  serve --host localhost --port 8765
+```
+
+Each JSONL record declares identity, project and scope, validity dates,
+supersession, source and authority classes, review/lifecycle/sensitivity state,
+provenance labels, and a positive token cost. The scenario declares the task,
+allowed classes, forbidden states, required stable IDs, budget, demo controls,
+and one late-correction fire drill. The starter files show every field with
+fictional public-safe data.
+
+`validate-inputs` checks strict JSON, schemas, types, record references, required
+IDs, control fixtures, and fire-drill coherence. A valid bundle can still fail
+policy compilation—for example, when a required record is present but illegal
+under the declared contract. `check` proves this repository and its default
+fixture; it is not a substitute for validating a custom bundle.
+
+Validation does not establish privacy, truth, provenance, rights to use the
+records, token-count accuracy, correct policy, or downstream safety. Review
+those properties separately before supplying real records.
+
 ## Decision Model
 
 Each active candidate gets exactly one trace row. Representative codes include:
@@ -257,6 +298,8 @@ python3 -B metadata_retrieval_demo.py correction-preview "wrong project"
   software-project records.
 - `examples/context_compiler_scenario.json`: default contract, poison controls, and
   one synthetic late-correction drill.
+- `examples/starter_records.jsonl` and `examples/starter_scenario.json`: a
+  copyable fictional bundle for adapting the compiler to another record set.
 - `tests/test_context_compiler.py`: compiler, fail-closed, staleness, UI contract,
   and HTTP regressions.
 - `metadata_retrieval_demo.py`, `examples/context_items.jsonl`,

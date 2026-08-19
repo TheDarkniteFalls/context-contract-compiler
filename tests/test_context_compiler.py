@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 import copy
+import contextlib
+import hashlib
+import io
 import json
 import re
+import socket
+import subprocess
+import sys
+import tempfile
 import threading
 import unittest
 import urllib.error
@@ -16,9 +23,10 @@ import context_compiler
 class ContextCompilerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.records = context_compiler.load_jsonl(context_compiler.DEFAULT_RECORDS)
-        context_compiler.validate_records(cls.records)
-        cls.scenario = context_compiler.load_scenario(context_compiler.DEFAULT_SCENARIO)
+        cls.records, cls.scenario = context_compiler.load_input_bundle(
+            context_compiler.DEFAULT_RECORDS,
+            context_compiler.DEFAULT_SCENARIO,
+        )
 
     def compile(self, *, contract=None, controls=None):  # type: ignore[no-untyped-def]
         return context_compiler.compile_context(
@@ -340,6 +348,383 @@ class ContextCompilerTests(unittest.TestCase):
         )
 
 
+class ContextCompilerInputTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.starter_records_path = context_compiler.ROOT / "examples" / "starter_records.jsonl"
+        cls.starter_scenario_path = context_compiler.ROOT / "examples" / "starter_scenario.json"
+        cls.starter_records, cls.starter_scenario = context_compiler.load_input_bundle(
+            cls.starter_records_path,
+            cls.starter_scenario_path,
+        )
+
+    def _write_bundle(
+        self,
+        root: Path,
+        *,
+        records: list[dict] | None = None,
+        scenario: dict | None = None,
+        records_text: str | None = None,
+        scenario_text: str | None = None,
+    ) -> tuple[Path, Path]:
+        records_path = root / "records.jsonl"
+        scenario_path = root / "scenario.json"
+        if records_text is None:
+            records_text = "\n".join(
+                json.dumps(record, sort_keys=True)
+                for record in (records if records is not None else self.starter_records)
+            ) + "\n"
+        if scenario_text is None:
+            scenario_text = json.dumps(
+                scenario if scenario is not None else self.starter_scenario,
+                indent=2,
+                sort_keys=True,
+            ) + "\n"
+        records_path.write_text(records_text, encoding="utf-8")
+        scenario_path.write_text(scenario_text, encoding="utf-8")
+        return records_path, scenario_path
+
+    def _run_main(self, arguments: list[str]) -> tuple[int, str, str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            status = context_compiler.main(arguments)
+        return status, stdout.getvalue(), stderr.getvalue()
+
+    def test_validate_inputs_accepts_default_and_starter(self) -> None:
+        default = self._run_main(["validate-inputs"])
+        starter = self._run_main(
+            [
+                "--records",
+                str(self.starter_records_path),
+                "--scenario-file",
+                str(self.starter_scenario_path),
+                "validate-inputs",
+            ]
+        )
+        self.assertEqual(default, (0, "VALID INPUTS: records=13 scenarios=1 base_required=1 late_required=1\n", ""))
+        self.assertEqual(starter, (0, "VALID INPUTS: records=4 scenarios=1 base_required=1 late_required=1\n", ""))
+
+    def test_invalid_cli_is_concise_and_starts_no_server(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            records_path, scenario_path = self._write_bundle(
+                root,
+                records_text="{not json}\n",
+            )
+            status, stdout, stderr = self._run_main(
+                [
+                    "--records",
+                    str(records_path),
+                    "--scenario-file",
+                    str(scenario_path),
+                    "validate-inputs",
+                ]
+            )
+            self.assertEqual(status, 2)
+            self.assertEqual(stdout, "")
+            self.assertRegex(stderr, r"^INVALID INPUTS: .+\n$")
+            self.assertNotIn("Traceback", stderr)
+
+            status, stdout, stderr = self._run_main(
+                [
+                    "--records",
+                    str(records_path),
+                    "--scenario-file",
+                    str(scenario_path),
+                    "compile",
+                    "--json",
+                ]
+            )
+            self.assertEqual(status, 2)
+            self.assertEqual(stdout, "")
+            self.assertRegex(stderr, r"^INVALID INPUTS: .+\n$")
+            self.assertNotIn("Traceback", stderr)
+
+            with socket.socket() as probe:
+                probe.bind(("localhost", 0))
+                port = probe.getsockname()[1]
+            status, stdout, stderr = self._run_main(
+                [
+                    "--records",
+                    str(records_path),
+                    "--scenario-file",
+                    str(scenario_path),
+                    "serve",
+                    "--host",
+                    "localhost",
+                    "--port",
+                    str(port),
+                ]
+            )
+            self.assertEqual(status, 2)
+            self.assertEqual(stdout, "")
+            self.assertNotIn("Traceback", stderr)
+            with socket.socket() as client:
+                client.settimeout(0.1)
+                self.assertNotEqual(client.connect_ex(("localhost", port)), 0)
+
+    def test_strict_json_rejects_malformed_non_object_duplicate_and_non_finite(self) -> None:
+        first = self.starter_records[0]
+        valid_first = json.dumps(first, sort_keys=True)
+        duplicate_first = valid_first.replace(
+            '"id": "POLICY-100"',
+            '"id": "POLICY-100", "id": "POLICY-101"',
+            1,
+        )
+        non_finite_first = valid_first.replace('"token_count": 12', '"token_count": NaN')
+        cases = {
+            "malformed": "{not json}\n",
+            "non_object": "[]\n",
+            "duplicate": duplicate_first + "\n",
+            "non_finite": non_finite_first + "\n",
+        }
+        for label, records_text in cases.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                records_path, scenario_path = self._write_bundle(
+                    Path(directory),
+                    records_text=records_text,
+                )
+                with self.assertRaises(ValueError):
+                    context_compiler.load_input_bundle(records_path, scenario_path)
+
+        scenario_text = self.starter_scenario_path.read_text(encoding="utf-8")
+        duplicate_scenario = scenario_text.replace(
+            '"id": "starter-message-router"',
+            '"id": "starter-message-router", "id": "duplicate"',
+            1,
+        )
+        non_finite_scenario = scenario_text.replace('"token_budget": 48', '"token_budget": NaN', 1)
+        for label, text in {
+            "duplicate_scenario": duplicate_scenario,
+            "non_finite_scenario": non_finite_scenario,
+        }.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                records_path, scenario_path = self._write_bundle(
+                    Path(directory),
+                    scenario_text=text,
+                )
+                with self.assertRaises(ValueError):
+                    context_compiler.load_input_bundle(records_path, scenario_path)
+
+    def test_record_schema_types_and_references_fail_closed(self) -> None:
+        cases: dict[str, list[dict]] = {}
+        missing = copy.deepcopy(self.starter_records)
+        missing[0].pop("title")
+        cases["missing_field"] = missing
+        extra = copy.deepcopy(self.starter_records)
+        extra[0]["private_note"] = "not allowed"
+        cases["extra_field"] = extra
+        wrong_type = copy.deepcopy(self.starter_records)
+        wrong_type[0]["token_count"] = "12"
+        cases["wrong_type"] = wrong_type
+        whitespace = copy.deepcopy(self.starter_records)
+        whitespace[0]["title"] = "   "
+        cases["whitespace"] = whitespace
+        duplicate = copy.deepcopy(self.starter_records)
+        duplicate[1]["id"] = duplicate[0]["id"]
+        cases["duplicate_id"] = duplicate
+        broken = copy.deepcopy(self.starter_records)
+        broken[3]["superseded_by"] = "MISSING-999"
+        cases["broken_supersession"] = broken
+        self_reference = copy.deepcopy(self.starter_records)
+        self_reference[3]["superseded_by"] = self_reference[3]["id"]
+        cases["self_supersession"] = self_reference
+
+        for label, records in cases.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                records_path, scenario_path = self._write_bundle(
+                    Path(directory),
+                    records=records,
+                )
+                with self.assertRaises(ValueError):
+                    context_compiler.load_input_bundle(records_path, scenario_path)
+
+    def test_contract_fire_drill_and_control_references_fail_closed(self) -> None:
+        cases: dict[str, dict] = {}
+        missing_base = copy.deepcopy(self.starter_scenario)
+        missing_base["contract"]["required_record_ids"] = ["MISSING-999"]
+        cases["missing_base_required"] = missing_base
+
+        dropped = copy.deepcopy(self.starter_scenario)
+        dropped["fire_drill"]["current_contract"]["required_record_ids"] = ["RUN-220"]
+        cases["dropped_existing_required"] = dropped
+
+        mismatch = copy.deepcopy(self.starter_scenario)
+        mismatch["fire_drill"]["current_contract"]["required_record_ids"].append("GUIDE-310")
+        cases["undeclared_new_required"] = mismatch
+
+        missing_fire = copy.deepcopy(self.starter_scenario)
+        missing_fire["fire_drill"]["change"]["required_record_ids"] = ["MISSING-999"]
+        missing_fire["fire_drill"]["current_contract"]["required_record_ids"] = [
+            "POLICY-100",
+            "MISSING-999",
+        ]
+        cases["missing_fire_required"] = missing_fire
+
+        missing_control = copy.deepcopy(self.starter_scenario)
+        missing_control["controls"]["future_reveal"] = True
+        cases["missing_control_fixture"] = missing_control
+
+        wrong_contract_type = copy.deepcopy(self.starter_scenario)
+        wrong_contract_type["contract"] = []
+        cases["wrong_contract_type"] = wrong_contract_type
+
+        extra_scenario = copy.deepcopy(self.starter_scenario)
+        extra_scenario["private_note"] = "not allowed"
+        cases["extra_scenario_field"] = extra_scenario
+
+        for label, scenario in cases.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                records_path, scenario_path = self._write_bundle(
+                    Path(directory),
+                    scenario=scenario,
+                )
+                with self.assertRaises(ValueError):
+                    context_compiler.load_input_bundle(records_path, scenario_path)
+
+    def test_valid_bundle_can_still_fail_policy_compilation(self) -> None:
+        scenario = copy.deepcopy(self.starter_scenario)
+        scenario["contract"]["allowed_sources"].remove("policy_note")
+        with tempfile.TemporaryDirectory() as directory:
+            records_path, scenario_path = self._write_bundle(
+                Path(directory),
+                scenario=scenario,
+            )
+            records, loaded = context_compiler.load_input_bundle(records_path, scenario_path)
+        result = context_compiler.compile_context(
+            records,
+            loaded["contract"],
+            loaded["controls"],
+        )
+        self.assertEqual(result["status"], "fail_closed")
+        self.assertEqual(result["failure"]["reason_code"], "REQUIRED_SOURCE_NOT_ALLOWED")
+        self.assertEqual(result["packet"], [])
+
+    def test_starter_compile_and_fire_drill_are_deterministic(self) -> None:
+        compiled = context_compiler.compile_default(
+            self.starter_records_path,
+            self.starter_scenario_path,
+        )
+        self.assertEqual(
+            compiled,
+            context_compiler.compile_default(
+                self.starter_records_path,
+                self.starter_scenario_path,
+            ),
+        )
+        self.assertEqual(compiled["receipt_id"], "cg-506603b39e23d288")
+        self.assertEqual(
+            [record["id"] for record in compiled["packet"]],
+            ["POLICY-100", "GUIDE-310", "RUN-220"],
+        )
+        self.assertEqual(compiled["summary"]["token_count"], 37)
+        self.assertEqual(compiled["summary"]["remaining_tokens"], 11)
+
+        fire_drill = self.starter_scenario["fire_drill"]
+        stale = context_compiler.evaluate_context_staleness(
+            self.starter_records,
+            context_compiler.receipt_proof(compiled),
+            fire_drill["change"],
+            fire_drill["current_contract"],
+            self.starter_scenario["controls"],
+        )
+        self.assertEqual(stale["outcome"], "recompile_required")
+        self.assertEqual(stale["reason_code"], "STALE_CONTRACT_FINGERPRINT")
+        recompiled = context_compiler.compile_context(
+            self.starter_records,
+            fire_drill["current_contract"],
+            self.starter_scenario["controls"],
+        )
+        self.assertEqual(
+            [record["id"] for record in recompiled["packet"]],
+            ["POLICY-100", "RUN-220", "GUIDE-310"],
+        )
+        self.assertEqual(recompiled["receipt_id"], "cg-12f857c62bba5fdc")
+
+        controls = dict(self.starter_scenario["controls"])
+        controls["remove_required_provenance"] = True
+        unsupported = context_compiler.compile_context(
+            self.starter_records,
+            self.starter_scenario["contract"],
+            controls,
+        )
+        self.assertEqual(unsupported["status"], "fail_closed")
+        self.assertEqual(
+            unsupported["failure"]["reason_code"],
+            "REQUIRED_MISSING_PROVENANCE",
+        )
+        self.assertEqual(unsupported["failure"]["record_id"], "POLICY-100")
+
+    def test_debugger_options_follow_loaded_legal_records(self) -> None:
+        default = context_compiler.scenario_payload(
+            context_compiler.DEFAULT_RECORDS,
+            context_compiler.DEFAULT_SCENARIO,
+        )
+        starter = context_compiler.scenario_payload(
+            self.starter_records_path,
+            self.starter_scenario_path,
+        )
+        self.assertEqual(
+            [item["id"] for item in default["options"]["required_records"]],
+            ["ADR-0234", "DEC-0421", "RUN-0880", "GUIDE-0112"],
+        )
+        self.assertEqual(len(default["options"]["controls"]), 7)
+        self.assertEqual(
+            [item["id"] for item in starter["options"]["required_records"]],
+            ["POLICY-100", "RUN-220", "GUIDE-310"],
+        )
+        self.assertEqual(
+            [item["id"] for item in starter["options"]["controls"]],
+            ["remove_required_provenance", "tight_token_budget"],
+        )
+        self.assertIn("draft", starter["options"]["lifecycle_states"])
+        self.assertIn("restricted", starter["options"]["sensitivity_states"])
+        for source in self.starter_scenario["contract"]["allowed_sources"]:
+            self.assertIn(source, starter["options"]["sources"])
+        for authority in self.starter_scenario["contract"]["allowed_authorities"]:
+            self.assertIn(authority, starter["options"]["authorities"])
+
+    def test_starter_fixture_is_public_safe_and_synthetic(self) -> None:
+        text = self.starter_records_path.read_text(encoding="utf-8") + self.starter_scenario_path.read_text(encoding="utf-8")
+        for forbidden in (
+            "http://",
+            "https://",
+            "github.com",
+            "@",
+            "/Users/",
+            "TheDarkniteFalls",
+            "credential",
+            "private note",
+        ):
+            self.assertNotIn(forbidden, text)
+        for record in self.starter_records:
+            self.assertTrue(all(item.startswith("synthetic:") for item in record["provenance"]))
+
+    def test_default_cli_bytes_remain_exact(self) -> None:
+        commands = {
+            "json": (
+                [sys.executable, "-B", "context_compiler.py", "compile", "--json"],
+                "1f299f24fcc88fe83dbad69f6095bb76d2bf4a4b650182b6b98b3000109c21dd",
+            ),
+            "human": (
+                [sys.executable, "-B", "context_compiler.py", "compile"],
+                "18214747c29fe73f51b66c7653b7b10c1e4dd5130d5d7ac1102b088c565cb30a",
+            ),
+        }
+        for label, (command, expected_hash) in commands.items():
+            with self.subTest(label=label):
+                completed = subprocess.run(
+                    command,
+                    cwd=context_compiler.ROOT,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(completed.returncode, 0)
+                self.assertEqual(completed.stderr, b"")
+                self.assertEqual(hashlib.sha256(completed.stdout).hexdigest(), expected_hash)
+
+
 class QuietContextCompilerHandler(context_compiler.ContextCompilerHandler):
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -433,6 +818,33 @@ class ContextCompilerHTTPTests(unittest.TestCase):
             urllib.request.urlopen(request, timeout=2)
         self.assertEqual(caught.exception.code, 400)
 
+    def test_http_rejects_duplicate_keys_and_non_finite_numbers(self) -> None:
+        scenario = context_compiler.load_scenario(context_compiler.DEFAULT_SCENARIO)
+        contract = json.dumps(scenario["contract"], separators=(",", ":"))
+        payloads = (
+            (
+                '{"contract":'
+                + contract
+                + ',"controls":{},"controls":{"tight_token_budget":false}}'
+            ).encode("utf-8"),
+            (
+                '{"contract":'
+                + contract
+                + ',"controls":{"tight_token_budget":NaN}}'
+            ).encode("utf-8"),
+        )
+        for payload in payloads:
+            with self.subTest(payload=payload[-48:]):
+                request = urllib.request.Request(
+                    self.base_url + "/api/compile",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    urllib.request.urlopen(request, timeout=2)
+                self.assertEqual(caught.exception.code, 400)
+
     def test_post_body_size_boundary(self) -> None:
         scenario = context_compiler.load_scenario(context_compiler.DEFAULT_SCENARIO)
         payload = json.dumps(
@@ -468,6 +880,65 @@ class ContextCompilerHTTPTests(unittest.TestCase):
             self.assertEqual(response.status, 200)
             self.assertIn("Context Contract Compiler · Context Debugger", html)
             self.assertIn("app.js", html)
+
+
+class StarterContextCompilerHTTPTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        QuietContextCompilerHandler.records_path = (
+            context_compiler.ROOT / "examples" / "starter_records.jsonl"
+        )
+        QuietContextCompilerHandler.scenario_path = (
+            context_compiler.ROOT / "examples" / "starter_scenario.json"
+        )
+        cls.server = ThreadingHTTPServer(("localhost", 0), QuietContextCompilerHandler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.base_url = f"http://localhost:{cls.server.server_port}"
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join(timeout=2)
+
+    def test_starter_get_and_post_compile(self) -> None:
+        with urllib.request.urlopen(self.base_url + "/api/compile", timeout=2) as response:
+            result = json.loads(response.read())
+            self.assertEqual(response.status, 200)
+            self.assertEqual(result["receipt_id"], "cg-506603b39e23d288")
+
+        scenario = context_compiler.load_scenario(
+            context_compiler.ROOT / "examples" / "starter_scenario.json"
+        )
+        payload = json.dumps(
+            {"contract": scenario["contract"], "controls": scenario["controls"]}
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            self.base_url + "/api/compile",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=2) as response:
+            result = json.loads(response.read())
+            self.assertEqual(response.status, 200)
+            self.assertEqual(result["receipt_id"], "cg-506603b39e23d288")
+
+        invalid_controls = dict(scenario["controls"])
+        invalid_controls["future_reveal"] = True
+        invalid_payload = json.dumps(
+            {"contract": scenario["contract"], "controls": invalid_controls}
+        ).encode("utf-8")
+        invalid_request = urllib.request.Request(
+            self.base_url + "/api/compile",
+            data=invalid_payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(invalid_request, timeout=2)
+        self.assertEqual(caught.exception.code, 400)
 
 
 if __name__ == "__main__":
