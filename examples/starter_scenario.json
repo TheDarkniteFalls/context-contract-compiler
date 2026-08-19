@@ -1,0 +1,77 @@
+{
+  "id": "starter-message-router",
+  "name": "Starter message-router contract",
+  "contract": {
+    "task": "Prepare bounded retry handling for the message router",
+    "as_of": "2026-01-20",
+    "project": "lantern-workshop",
+    "scope": "message-router",
+    "allowed_sources": [
+      "policy_note",
+      "review_note",
+      "runbook"
+    ],
+    "allowed_authorities": [
+      "maintainers",
+      "reviewers"
+    ],
+    "required_record_ids": [
+      "POLICY-100"
+    ],
+    "forbidden_lifecycle_states": [
+      "draft",
+      "superseded"
+    ],
+    "forbidden_sensitivity_states": [
+      "restricted"
+    ],
+    "token_budget": 48
+  },
+  "controls": {
+    "future_reveal": false,
+    "superseded_decision": false,
+    "generated_draft": false,
+    "rejected_plan": false,
+    "ambiguous_identity": false,
+    "remove_required_provenance": false,
+    "tight_token_budget": false
+  },
+  "fire_drill": {
+    "id": "late-recovery-obligation",
+    "name": "Late recovery obligation",
+    "change": {
+      "kind": "late_user_correction",
+      "summary": "Treat the reviewed recovery runbook as required context.",
+      "required_record_ids": [
+        "RUN-220"
+      ]
+    },
+    "current_contract": {
+      "task": "Prepare bounded retry handling and recovery for the message router",
+      "as_of": "2026-01-20",
+      "project": "lantern-workshop",
+      "scope": "message-router",
+      "allowed_sources": [
+        "policy_note",
+        "review_note",
+        "runbook"
+      ],
+      "allowed_authorities": [
+        "maintainers",
+        "reviewers"
+      ],
+      "required_record_ids": [
+        "POLICY-100",
+        "RUN-220"
+      ],
+      "forbidden_lifecycle_states": [
+        "draft",
+        "superseded"
+      ],
+      "forbidden_sensitivity_states": [
+        "restricted"
+      ],
+      "token_budget": 48
+    }
+  }
+}
