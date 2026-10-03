@@ -44,7 +44,7 @@ PASS Context Contract Compiler full check
 
 A managed environment may deny local socket binding and explicitly skip the
 HTTP test class. That is not a passing HTTP result: rerun the unit suite on a
-normal local host and require all 39 tests to pass before release.
+normal local host and require the full test suite to pass before release.
 
 ## Manual Acceptance Route
 

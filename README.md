@@ -2,45 +2,29 @@
 
 [![checks](https://github.com/TheDarkniteFalls/context-contract-compiler/actions/workflows/checks.yml/badge.svg)](https://github.com/TheDarkniteFalls/context-contract-compiler/actions/workflows/checks.yml)
 
-<!-- toolkit-trust-card:start -->
-> **Public contract:** Experimental pattern · about 10 min · Python 3 · no model · no network
->
-> **Operation:** Read-only check; examples may use temporary files
->
-> **A pass establishes:** The synthetic compiler protects required records before ranking, explains every inclusion and exclusion, fails closed on invalid obligations, and rejects stale receipts deterministically.
->
-> **It does not establish:** Structured metadata and changes are supplied; the project does not discover runtime changes, authorize actions, verify truth, or prove downstream model safety.
->
-> **First check:** `python3 -B context_compiler.py check`
-<!-- toolkit-trust-card:end -->
+A relevant search result can still be the wrong context for an AI task. It may
+belong to another project, contain a future change, or leave out a decision
+that the task must respect.
 
-> Context Contract Compiler compiles the smallest context an AI is allowed to see, proves
-> every inclusion and exclusion, and detects when that context must be
-> recompiled.
+Context Contract Compiler is a small local demo for exploring that problem.
+Give it structured records, task rules, and a token budget. It selects records
+that meet those rules, keeps required records ahead of optional matches, and
+shows why each record was included or left out. If a required record cannot
+be used, it stops without producing a packet.
 
-Semantic retrieval can return the most relevant record and still be wrong for
-the task. A close match may belong to another project, come from the future,
-have been superseded, remain unreviewed, lack provenance, or displace an older
-obligation that must not be omitted.
+You can also declare a late correction and see why an earlier packet needs to
+be compiled again. The demo compares supplied records and rules; it does not
+watch an agent or discover changes on its own.
 
-Context Contract Compiler is a dependency-free local Context Debugger for that boundary. It
-compares a deliberately naïve relevance-only packet with a legality-first
-packet under the same task and token budget. Every supplied record receives a
-deterministic decision, and an illegal, unsupported, absent, or over-budget
-required record stops compilation instead of producing a plausible-looking
-partial packet. A deterministic receipt plus contract and packet fingerprints
-also makes a declared material change visible after compilation, so an old
-packet cannot silently continue.
-
-All fixtures are synthetic. Runtime requires no model, API key, package
-install, network access, or external data.
+All included records are fictional. You can try the demo with Python 3—no
+model, API key, package installation, or network connection is needed.
 
 ![Context Contract Compiler refusing continuation from a stale receipt](docs/assets/context-contract-compiler-stale-receipt.jpg)
 
 *Agent Fire Drill freezes a valid receipt, then refuses continuation after a
 declared late correction until the context is recompiled.*
 
-## Try It in 90 Seconds
+## Try the Demo
 
 Requires Python 3 with SQLite FTS5. From the repository root:
 
@@ -80,10 +64,25 @@ python3 -B context_compiler.py check
 See [TESTING.md](TESTING.md) for installation checks, the manual acceptance
 route, CLI/API use, and the seven-control matrix.
 
-## The Product Boundary
+<!-- toolkit-trust-card:placement -->
 
-Retrieval asks which records look similar. Context Contract Compiler first compiles a task
-contract, then permits ranking only inside the legal candidate set:
+<!-- toolkit-trust-card:start -->
+> **Public contract:** Experimental pattern · about 10 min · Python 3 · no model · no network
+>
+> **Operation:** Read-only check; examples may use temporary files
+>
+> **A pass establishes:** The synthetic compiler protects required records before ranking, explains every inclusion and exclusion, fails closed on invalid obligations, and rejects stale receipts deterministically.
+>
+> **It does not establish:** Structured metadata and changes are supplied; the project does not discover runtime changes, authorize actions, verify truth, or prove downstream model safety.
+>
+> **First check:** `python3 -B context_compiler.py check`
+<!-- toolkit-trust-card:end -->
+
+## How Records Are Selected
+
+Retrieval asks which records look similar. The compiler first checks the task
+contract—the rules you supply—and ranks optional records only after they pass
+those checks:
 
 ```text
 structured records + task contract
@@ -124,9 +123,9 @@ checks and pruned last. The naïve and compiler paths use the same FTS5 ranking
 implementation, but the naïve path ranks all active records while the compiler
 ranks only legal, non-required optional records.
 
-## Context Debugger
+## Explore the Results
 
-The responsive interface keeps the complete decision in one view:
+The browser interface lets you inspect each part of the result:
 
 - **Contract:** editable task boundaries and seven adversarial controls.
 - **Compare:** naïve and legality-first packets under the same budget.
@@ -137,7 +136,7 @@ The responsive interface keeps the complete decision in one view:
 - **Audit strip:** selected/excluded counts, exact budget accounting, receipt
   ID, and the governing principle.
 
-The checked-in poison controls cover a highly similar future reveal,
+The demo controls let you introduce a highly similar future reveal,
 superseded decision, generated draft, rejected writer-only plan, ambiguous
 identity, missing required provenance, and required record that cannot fit the
 budget. Desktop uses a three-rail debugger; smaller screens switch to Contract,
@@ -217,7 +216,7 @@ Validation does not establish privacy, truth, provenance, rights to use the
 records, token-count accuracy, correct policy, or downstream safety. Review
 those properties separately before supplying real records.
 
-## Decision Model
+## Read the Decision Codes
 
 Each active candidate gets exactly one trace row. Representative codes include:
 
@@ -236,10 +235,10 @@ receipt's original selection proof. Packet text carries record IDs, source,
 authority, provenance, and token accounting so the selection boundary remains
 visible after copying.
 
-## What the Proof Establishes
+## What a Passing Check Tells You
 
-A passing receipt establishes that, for the supplied structured records and
-declared contract:
+A passing receipt records the following checks for the structured records and
+contract you supplied:
 
 - every active candidate received one deterministic decision;
 - every selected record passed the implemented legality gates;
@@ -259,7 +258,7 @@ an authorization service, truth oracle, action gate, or runtime monitor. The
 staleness decision compares supplied evidence; it does not observe an agent or
 discover changes by itself.
 
-## Retrieval Foundation
+## Compare the Retrieval Approaches
 
 Context Contract Compiler reuses the repository's FTS5 expression and synthetic
 failure-driven retrieval harness instead of adding a competing retrieval
@@ -306,7 +305,7 @@ python3 -B metadata_retrieval_demo.py correction-preview "wrong project"
   `examples/eval_queries.jsonl`, `examples/failure_cases.jsonl`, and
   `tests/test_metadata_retrieval_demo.py`: retrieval foundation.
 
-## Limits and Status
+## Limits
 
 Context Contract Compiler is a local, single-user developer tool and synthetic reference
 implementation—not a production policy engine, access-control layer, vector
